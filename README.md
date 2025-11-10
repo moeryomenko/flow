@@ -18,7 +18,7 @@
 
 ## ⚠️ Research Project Notice
 
-> This is an **experimental research project** exploring P2300 with member customization points (P2855) and non-blocking support (P3669). It is **not ready for production use** and is intended for study, experimentation, and academic research purposes only.
+> This is an **experimental research project** exploring P2300 with member customization points (P2855), non-blocking support (P3669), async scopes (P3149), and structured concurrency (P3296). It is **not ready for production use** and is intended for study, experimentation, and academic research purposes only.
 
 ---
 
@@ -49,7 +49,7 @@
 
 ## 🎯 About
 
-**Flow** is a header-only C++23 library that implements the sender/receiver model for structured asynchronous programming. It provides a type-safe, composable, and zero-overhead abstraction for managing asynchronous operations, based on the upcoming C++ standard proposal P2300.
+**Flow** is a header-only C++23 library that implements the sender/receiver model for structured asynchronous programming. It provides a type-safe, composable, and zero-overhead abstraction for managing asynchronous operations, based on the upcoming C++ standard proposal P2300, with additional support for async scopes (P3149) and structured concurrency (P3296).
 
 ### What is Flow?
 
@@ -73,6 +73,8 @@ Traditional callback-based or future-based async programming can be complex and 
 - Structured cancellation and error propagation
 - Rich set of composable algorithms
 - Member function customization points for cleaner syntax
+- Async scopes for managing the lifetime of concurrent operations
+- Structured concurrency patterns for safe fire-and-forget operations
 
 ---
 
@@ -86,8 +88,10 @@ Traditional callback-based or future-based async programming can be complex and 
 - **📊 Algorithms** - `bulk`, `when_all`, `then`, `upon_error`, `upon_stopped`, and more
 - **✨ Clean API** - Member function customization points (P2855) for clarity
 - **🚫 Non-blocking Support** - P3669 concurrent schedulers for lock-free integration
+- **� Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
+- **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
 - **📦 C++ Modules Ready** - Future-proof module support (experimental)
-- **🧪 Comprehensive Tests** - Extensive test suite with 19+ test categories
+- **🧪 Comprehensive Tests** - Extensive test suite with 22+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
 
 ---
@@ -106,8 +110,8 @@ Traditional callback-based or future-based async programming can be complex and 
 
 ### Dependencies
 
-**Runtime**: None (header-only)  
-**Build-time**: CMake, C++23 compiler  
+**Runtime**: None (header-only)
+**Build-time**: CMake, C++23 compiler
 **Test-time**: Boost.UT (automatically fetched via CMake)
 
 ---
@@ -314,6 +318,40 @@ int main() {
 }
 ```
 
+### Structured Concurrency with Async Scopes
+
+```cpp
+#include <flow/execution.hpp>
+#include <iostream>
+
+using namespace flow::execution;
+
+int main() {
+    thread_pool pool{4};
+
+    auto result = flow::this_thread::sync_wait(
+        just() | let_async_scope([&](auto scope_token) {
+            // Spawn multiple concurrent tasks
+            for (int i = 0; i < 10; ++i) {
+                spawn(
+                    schedule(pool.get_scheduler()) | then([i] {
+                        std::cout << "Task " << i << " executing\n";
+                        return i * i;
+                    }),
+                    scope_token
+                );
+            }
+            // All spawned work automatically completes before continuing
+        })
+        | then([] {
+            std::cout << "All concurrent work completed!\n";
+        })
+    );
+
+    return 0;
+}
+```
+
 ---
 
 ## 📁 Project Structure
@@ -346,6 +384,7 @@ flow/
 │           ├── factories.hpp       # Sender factories (just, just_error, etc.)
 │           ├── adaptors.hpp        # Sender adaptors (then, upon_error, etc.)
 │           ├── algorithms.hpp      # Advanced algorithms (bulk, when_all, etc.)
+│           ├── async_scope.hpp     # Async scope support (P3149, P3296)
 │           ├── schedulers.hpp      # Standard scheduler implementations
 │           ├── sync_wait.hpp       # Synchronous execution utilities
 │           ├── type_list.hpp       # Type manipulation utilities
@@ -377,7 +416,10 @@ flow/
     ├── platform_tests.cpp              # Platform-specific tests
     ├── compilation_tests.cpp           # Compile-time tests
     ├── advanced_features_test.cpp      # Advanced feature tests
-    └── limitations_resolved_test.cpp   # Known issue verification
+    ├── limitations_resolved_test.cpp   # Known issue verification
+    ├── async_scope_basic_tests.cpp     # Basic async scope tests (P3149)
+    ├── async_scope_comprehensive_tests.cpp  # Comprehensive scope tests
+    └── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
 ```
 
 ---
@@ -448,6 +490,43 @@ auto state = sender.connect(receiver);  // Create operation state
 state.start();                          // Begin execution
 ```
 
+### Async Scopes
+
+Async scopes manage the lifetime of asynchronous operations:
+
+```cpp
+// Simple counting scope - tracks operations
+simple_counting_scope simple_scope;
+auto simple_token = simple_scope.get_token();
+
+// Counting scope - tracks operations with cancellation
+counting_scope scope;
+auto token = scope.get_token();
+
+// Associate work with scope
+auto work = associate(some_sender, token);
+
+// Wait for all work to complete
+flow::this_thread::sync_wait(scope.join());
+```
+
+### Scope Tokens
+
+Scope tokens control association and wrapping of senders:
+
+```cpp
+counting_scope scope;
+auto token = scope.get_token();
+
+// Spawn fire-and-forget work
+spawn(schedule(pool.get_scheduler()) | then([] {
+    // Work that's tracked by scope
+}), token);
+
+// Request cancellation
+scope.request_stop();
+```
+
 ---
 
 ## 🎨 Algorithms & API
@@ -474,6 +553,7 @@ Transform and compose senders:
 | `upon_stopped(fn)` | Handle cancellation |
 | `let_value(fn)` | Chain dependent async operations |
 | `let_error(fn)` | Chain error recovery operations |
+| `let_async_scope(fn)` | Create async scope for structured concurrency (P3296) |
 
 ### Algorithms
 
@@ -485,6 +565,19 @@ Advanced sender operations:
 | `when_all(senders...)` | Wait for all senders to complete |
 | `transfer(scheduler)` | Move execution to different scheduler |
 
+### Async Scope Operations
+
+Manage concurrent operation lifetimes:
+
+| Operation | Description |
+|-----------|-------------|
+| `associate(sndr, token)` | Associate sender with scope token |
+| `spawn(sndr, token)` | Fire-and-forget work tracked by scope |
+| `spawn_future(sndr, token)` | Spawn work and get future sender |
+| `scope.join()` | Wait for all associated work to complete |
+| `scope.close()` | Prevent new associations |
+| `scope.request_stop()` | Request cancellation (counting_scope only) |
+
 ### Pipeline Syntax
 
 Chain operations using `operator|`:
@@ -495,6 +588,105 @@ auto result = schedule(pool.get_scheduler())
     | upon_error([](auto ep) { /* handle error */ })
     | bulk(100, [](size_t i) { /* parallel work */ });
 ```
+
+---
+
+## 🎭 Async Scopes & Structured Concurrency
+
+Flow provides comprehensive support for managing the lifetime of asynchronous operations through async scopes (P3149) and structured concurrency patterns (P3296).
+
+### Simple Counting Scope
+
+Basic scope that tracks active operations:
+
+```cpp
+#include <flow/execution.hpp>
+using namespace flow::execution;
+
+simple_counting_scope scope;
+auto token = scope.get_token();
+
+// Associate work with scope
+auto work = associate(schedule(pool.get_scheduler()) | then([] {
+    std::cout << "Work in scope\n";
+    return 42;
+}), token);
+
+flow::this_thread::sync_wait(work);
+
+// Wait for all work to complete
+flow::this_thread::sync_wait(scope.join());
+```
+
+### Counting Scope
+
+Advanced scope with stop token support for cancellation:
+
+```cpp
+counting_scope scope;
+auto token = scope.get_token();
+
+// Spawn fire-and-forget work
+spawn(schedule(pool.get_scheduler()) | then([] {
+    std::cout << "Background work\n";
+}), token);
+
+// Request cancellation of all work
+scope.request_stop();
+
+// Wait for cleanup
+flow::this_thread::sync_wait(scope.join());
+```
+
+### let_async_scope - Structured Concurrency
+
+The `let_async_scope` adaptor provides a safe way to spawn concurrent work that automatically waits for completion:
+
+```cpp
+auto result = flow::this_thread::sync_wait(
+    just(42) | let_async_scope([&](auto scope_token) {
+        // Spawn multiple concurrent operations
+        spawn(schedule(pool.get_scheduler()) | then([](int x) {
+            std::cout << "Processing " << x << "\n";
+        }), scope_token);
+
+        spawn(schedule(pool.get_scheduler()) | then([](int x) {
+            std::cout << "Also processing " << x << "\n";
+        }), scope_token);
+
+        // Scope automatically waits for all spawned work
+    })
+);
+```
+
+### Spawn Future
+
+Create futures from spawned work:
+
+```cpp
+counting_scope scope;
+auto token = scope.get_token();
+
+auto future = spawn_future(
+    schedule(pool.get_scheduler()) | then([] {
+        return 42;
+    }),
+    token
+);
+
+// Use future as a sender
+auto result = flow::this_thread::sync_wait(future);
+
+flow::this_thread::sync_wait(scope.join());
+```
+
+### Key Features
+
+- **Lifetime Management**: Automatically track async operations
+- **Structured Cancellation**: Stop token propagation
+- **Error Handling**: First error stops all work in `let_async_scope`
+- **Type Safety**: Compile-time checked scope associations
+- **Fire-and-Forget**: Safe `spawn` with automatic cleanup
 
 ---
 
@@ -561,7 +753,7 @@ auto cancellable_work = schedule(scheduler)
 
 ## 🧪 Testing
 
-Flow includes a comprehensive test suite with 19+ test categories:
+Flow includes a comprehensive test suite with 22+ test categories:
 
 ```bash
 # Build with tests
@@ -573,6 +765,8 @@ ctest
 
 # Run specific test
 ./tests/scheduler_tests
+./tests/async_scope_basic_tests
+./tests/let_async_scope_tests
 
 # Run tests with verbose output
 ctest -V
@@ -594,6 +788,8 @@ ctest -V
 - **Integration Tests**: End-to-end scenarios
 - **Edge Case Tests**: Corner cases and boundaries
 - **Platform Tests**: OS-specific behavior
+- **Async Scope Tests**: P3149 scope functionality
+- **let_async_scope Tests**: P3296 structured concurrency
 
 ---
 
@@ -635,6 +831,8 @@ Flow is designed for **zero-overhead abstraction**:
 Flow specifically explores:
 - **P2855**: Member customization points (different from tag_invoke)
 - **P3669**: Non-blocking scheduler support
+- **P3149**: Async scope support for lifetime management
+- **P3296**: Structured concurrency with `let_async_scope`
 - **Modern C++23**: Latest language features
 
 If you need a production-ready solution, consider:
@@ -679,6 +877,9 @@ See [Contributing](#-contributing) section below!
 - ✅ Core sender/receiver model
 - ✅ Standard schedulers (inline, run_loop, thread_pool)
 - ✅ Essential algorithms (then, upon_error, bulk, when_all)
+- ✅ Async scopes (P3149) - `simple_counting_scope`, `counting_scope`
+- ✅ Structured concurrency (P3296) - `let_async_scope`
+- ✅ Spawn operations (`spawn`, `spawn_future`)
 - ✅ Comprehensive test suite
 - ✅ Example programs
 
@@ -690,6 +891,7 @@ See [Contributing](#-contributing) section below!
 - 🔄 **I/O schedulers** - Async I/O primitives
 - 🔄 **Timer support** - Scheduled/delayed execution
 - 🔄 **Performance benchmarks** - Comparison with other implementations
+- 🔄 **Enhanced error handling** - Better error aggregation in scopes
 
 **Note**: As a research project, priorities may shift based on standardization developments.
 
@@ -760,6 +962,8 @@ You may use this project under the terms of either license.
 
 - [P2300R10: `std::execution`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p2300r10.html) - Core sender/receiver model
 - [P2855: Member customization points](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p2855r1.html) - Member function CPOs
+- [P3149: Async scopes](https://open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3149r11.html) - Lifetime management for async operations
+- [P3296: `let_async_scope`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3296r4.html) - Structured concurrency patterns
 - [P3669: Non-blocking support](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3669r0.html) - Concurrent schedulers
 
 ### Related Projects

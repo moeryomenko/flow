@@ -29,6 +29,9 @@ set(
   compilation_tests.cpp
   advanced_features_test.cpp
   limitations_resolved_test.cpp
+  async_scope_basic_tests.cpp
+  async_scope_comprehensive_tests.cpp
+  let_async_scope_tests.cpp
 )
 
 # Create test executables and register them
