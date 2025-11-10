@@ -1,0 +1,64 @@
+# .clang-tidy configuration file
+Checks: >
+    bugprone-*,
+    clang-analyzer-*,
+    concurrency-*,
+    cppcoreguidelines-*,
+    modernize-*,
+    performance-*,
+    portability-*,
+    readability-*,
+    -bugprone-easily-swappable-parameters,
+    -bugprone-exception-escape,
+    -bugprone-forwarding-reference-overload,
+    -bugprone-lambda-function-name,
+    -bugprone-macro-parentheses,
+    -bugprone-reserved-identifier,
+    -bugprone-too-small-loop-variable,
+    -clang-analyzer-valist.*,
+    -cppcoreguidelines-avoid-magic-numbers,
+    -cppcoreguidelines-missing-std-forward,
+    -cppcoreguidelines-pro-bounds-constant-array-index,
+    -cppcoreguidelines-pro-type-union-access,
+    -cppcoreguidelines-pro-type-vararg,
+    -cppcoreguidelines-rvalue-reference-param-not-moved,
+    -cppcoreguidelines-special-member-functions,
+    -modernize-use-trailing-return-type,
+    -performance-enum-size,
+    -portability-avoid-pragma-once,
+    -readability-identifier-length,
+    -readability-identifier-naming,
+    -readability-magic-numbers,
+    -readability-function-cognitive-complexity
+
+# Format style (choose one that matches your project)
+FormatStyle: file
+
+# Header filters (adjust for your project)
+HeaderFilterRegex: ''
+
+# Analyze temporary destructors
+CheckOptions:
+  - key:   bugprone-exception-escape.CheckDestructors
+    value: 'true'
+
+  - key:   bugprone-use-after-move.CheckForwardingReferences
+    value: 'true'
+
+  - key:   modernize-use-nodiscard.ReplacementString
+    value: '[[nodiscard]]'
+
+  - key:   modernize-use-using.ReplacementString
+    value: 'using'
+
+  - key:   performance-unnecessary-value-param.AllowedTypes
+    value: 'std::*;iterator'
+
+# Warnings as errors (enable for strict mode)
+# WarningsAsErrors: ''
+
+# System headers (disable for system headers)
+SystemHeaders: false
+
+# Generate fixes where possible
+# FixNotes: true  # Not supported in older clang-tidy versions

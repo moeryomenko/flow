@@ -1,0 +1,16 @@
+---
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 100
+AlignTrailingComments: true
+ContinuationIndentWidth: 4
+AlignOperands: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignAfterOpenBracket: Align
+BreakBeforeBinaryOperators: NonAssignment
+BreakStringLiterals: false
+SpacesBeforeTrailingComments: 2
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
