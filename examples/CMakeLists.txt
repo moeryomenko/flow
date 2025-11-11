@@ -6,3 +6,6 @@ target_link_libraries(error_handling PRIVATE flow::flow)
 
 add_executable(parallel_transform parallel_transform.cpp)
 target_link_libraries(parallel_transform PRIVATE flow::flow)
+
+add_executable(when_any_example when_any_example.cpp)
+target_link_libraries(when_any_example PRIVATE flow::flow)

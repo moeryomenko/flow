@@ -14,7 +14,7 @@ using namespace boost::ut;
 // 1. Core Concept Tests
 // ============================================================================
 
-suite core_concept_tests = [] {
+const suite core_concept_tests = [] {
   "scope_token concept requirements"_test = [] {
     expect(ex::scope_token<ex::simple_counting_scope::token>);
     expect(ex::scope_token<ex::counting_scope::token>);
@@ -30,8 +30,8 @@ suite core_concept_tests = [] {
 
   "async_scope_association concept"_test = [] {
     struct test_association {
-      bool associated_ = false;
-      bool is_associated() const noexcept {
+      bool               associated_ = false;
+      [[nodiscard]] bool is_associated() const noexcept {
         return associated_;
       }
       void disassociate() noexcept {
@@ -52,7 +52,7 @@ suite core_concept_tests = [] {
 // 2. Simple Counting Scope State Machine Tests
 // ============================================================================
 
-suite simple_counting_scope_state_tests = [] {
+const suite simple_counting_scope_state_tests = [] {
   "unused to open transition"_test = [] {
     ex::simple_counting_scope scope;
     auto                      token = scope.get_token();
@@ -121,7 +121,7 @@ suite simple_counting_scope_state_tests = [] {
 // 3. Counting Scope Tests
 // ============================================================================
 
-suite counting_scope_tests = [] {
+const suite counting_scope_tests = [] {
   "stop source integration"_test = [] {
     ex::counting_scope scope;
 
@@ -177,7 +177,7 @@ suite counting_scope_tests = [] {
 // 4. Thread Safety Tests
 // ============================================================================
 
-suite thread_safety_tests = [] {
+const suite thread_safety_tests = [] {
   "concurrent associations"_test = [] {
     ex::simple_counting_scope scope;
     auto                      token = scope.get_token();
@@ -185,6 +185,7 @@ suite thread_safety_tests = [] {
     std::atomic<int>         successful{0};
     std::vector<std::thread> threads;
 
+    threads.reserve(10);
     for (int i = 0; i < 10; ++i) {
       threads.emplace_back([token, &successful]() mutable {
         if (token.try_associate()) {
@@ -242,7 +243,7 @@ suite thread_safety_tests = [] {
 // 5. Corner Cases and Edge Conditions
 // ============================================================================
 
-suite corner_case_tests = [] {
+const suite corner_case_tests = [] {
   "empty scope lifecycle"_test = [] {
     ex::simple_counting_scope scope;
     scope.close();
@@ -335,6 +336,7 @@ suite corner_case_tests = [] {
     std::vector<std::thread> threads;
     std::atomic<int>         token_count{0};
 
+    threads.reserve(20);
     for (int i = 0; i < 20; ++i) {
       threads.emplace_back([&scope, &token_count] {
         auto token = scope.get_token();

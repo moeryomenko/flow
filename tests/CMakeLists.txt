@@ -32,6 +32,7 @@ set(
   async_scope_basic_tests.cpp
   async_scope_comprehensive_tests.cpp
   let_async_scope_tests.cpp
+  when_any_tests.cpp
 )
 
 # Create test executables and register them
