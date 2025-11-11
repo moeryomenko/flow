@@ -70,8 +70,9 @@ Flow enables you to write asynchronous code that is:
 
 Traditional callback-based or future-based async programming can be complex and error-prone. Flow provides:
 - Clear separation of work description, scheduling, and result handling
+- Comprehensive cancellation support with stop tokens and active cancellation
 - Structured cancellation and error propagation
-- Rich set of composable algorithms
+- Rich set of composable algorithms including racing operations
 - Member function customization points for cleaner syntax
 - Async scopes for managing the lifetime of concurrent operations
 - Structured concurrency patterns for safe fire-and-forget operations
@@ -85,13 +86,14 @@ Traditional callback-based or future-based async programming can be complex and 
 - **⚡ Zero-overhead** - Header-only library with excellent optimization potential
 - **🔧 Composable** - Rich set of algorithms for building complex async workflows
 - **🧵 Thread Pool** - Built-in thread pool and run loop schedulers
-- **📊 Algorithms** - `bulk`, `when_all`, `then`, `upon_error`, `upon_stopped`, and more
+- **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
 - **✨ Clean API** - Member function customization points (P2855) for clarity
 - **🚫 Non-blocking Support** - P3669 concurrent schedulers for lock-free integration
 - **� Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
 - **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
+- **� Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
 - **📦 C++ Modules Ready** - Future-proof module support (experimental)
-- **🧪 Comprehensive Tests** - Extensive test suite with 22+ test categories
+- **🧪 Comprehensive Tests** - Extensive test suite with 23+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
 
 ---
@@ -352,6 +354,48 @@ int main() {
 }
 ```
 
+### Racing Operations with when_any
+
+```cpp
+#include <flow/execution.hpp>
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+using namespace flow::execution;
+
+int main() {
+    thread_pool pool{4};
+
+    // Create three competing tasks
+    auto fast_task = schedule(pool.get_scheduler()) | then([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return "fast";
+    });
+
+    auto medium_task = schedule(pool.get_scheduler()) | then([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return "medium";
+    });
+
+    auto slow_task = schedule(pool.get_scheduler()) | then([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        return "slow";
+    });
+
+    // Race them - first to complete wins, others are cancelled
+    auto race = when_any(std::move(fast_task), std::move(medium_task), std::move(slow_task));
+    auto result = flow::this_thread::sync_wait(std::move(race));
+
+    if (result) {
+        auto [winner] = *result;
+        std::cout << "Winner: " << winner << "\n";
+    }
+
+    return 0;
+}
+```
+
 ---
 
 ## 📁 Project Structure
@@ -383,9 +427,10 @@ flow/
 │           ├── completion_signatures.hpp  # Completion signatures
 │           ├── factories.hpp       # Sender factories (just, just_error, etc.)
 │           ├── adaptors.hpp        # Sender adaptors (then, upon_error, etc.)
-│           ├── algorithms.hpp      # Advanced algorithms (bulk, when_all, etc.)
+│           ├── algorithms.hpp      # Advanced algorithms (bulk, when_all, when_any, etc.)
 │           ├── async_scope.hpp     # Async scope support (P3149, P3296)
 │           ├── schedulers.hpp      # Standard scheduler implementations
+│           ├── stop_token.hpp      # Stop token and cancellation support
 │           ├── sync_wait.hpp       # Synchronous execution utilities
 │           ├── type_list.hpp       # Type manipulation utilities
 │           └── utils.hpp           # General utilities
@@ -394,7 +439,8 @@ flow/
 │   ├── CMakeLists.txt
 │   ├── hello_world.cpp         # Basic usage example
 │   ├── error_handling.cpp      # Error handling patterns
-│   └── parallel_transform.cpp  # Parallel computation example
+│   ├── parallel_transform.cpp  # Parallel computation example
+│   └── when_any_example.cpp    # Racing operations example
 │
 └── tests/
     ├── CMakeLists.txt
@@ -419,7 +465,8 @@ flow/
     ├── limitations_resolved_test.cpp   # Known issue verification
     ├── async_scope_basic_tests.cpp     # Basic async scope tests (P3149)
     ├── async_scope_comprehensive_tests.cpp  # Comprehensive scope tests
-    └── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
+    ├── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
+    └── when_any_tests.cpp              # when_any algorithm tests
 ```
 
 ---
@@ -562,7 +609,8 @@ Advanced sender operations:
 | Algorithm | Description |
 |-----------|-------------|
 | `bulk(count, fn)` | Execute function for range [0, count) in parallel |
-| `when_all(senders...)` | Wait for all senders to complete |
+| `when_all(senders...)` | Wait for all senders to complete, aggregating results |
+| `when_any(senders...)` | Race senders, first to complete wins (with active cancellation) |
 | `transfer(scheduler)` | Move execution to different scheduler |
 
 ### Async Scope Operations
@@ -587,6 +635,86 @@ auto result = schedule(pool.get_scheduler())
     | then([](auto... args) { /* transform */ })
     | upon_error([](auto ep) { /* handle error */ })
     | bulk(100, [](size_t i) { /* parallel work */ });
+```
+
+---
+
+## 🛑 Cancellation & Stop Tokens
+
+Flow provides comprehensive support for cooperative cancellation through stop tokens, enabling graceful termination of asynchronous operations.
+
+### Stop Token Types
+
+Flow supports multiple stop token types:
+
+```cpp
+// Standard C++ stop token
+std::stop_source source;
+std::stop_token token = source.get_token();
+
+// Inplace stop token (no allocation, lightweight)
+flow::execution::inplace_stop_source source;
+flow::execution::inplace_stop_token token = source.get_token();
+```
+
+### Query Stop Tokens from Environment
+
+Senders can query stop tokens from their execution environment:
+
+```cpp
+auto work = schedule(pool.get_scheduler()) | then([](auto) {
+    auto env = flow::execution::get_env(/* receiver */);
+    auto token = flow::execution::get_stop_token(env);
+
+    while (!token.stop_requested()) {
+        // Do work that respects cancellation
+    }
+});
+```
+
+### Stop Callbacks
+
+Register callbacks to be invoked when cancellation is requested:
+
+```cpp
+flow::execution::inplace_stop_source source;
+auto token = source.get_token();
+
+// Register callback
+flow::execution::inplace_stop_callback callback(token, [] {
+    std::cout << "Cancellation requested!\n";
+});
+
+source.request_stop();  // Callback is invoked
+```
+
+### when_any Active Cancellation
+
+The `when_any` algorithm demonstrates active cancellation - when the first operation completes, remaining operations are automatically cancelled:
+
+```cpp
+auto fast = schedule(pool.get_scheduler()) | then([] { return 1; });
+auto slow = schedule(pool.get_scheduler()) | then([] {
+    // This will be cancelled when fast completes
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    return 2;
+});
+
+auto race = when_any(std::move(fast), std::move(slow));
+auto result = flow::this_thread::sync_wait(std::move(race));
+// slow is automatically cancelled, doesn't wait 10 seconds
+```
+
+### Environment with Stop Token
+
+Create execution environments with custom stop tokens:
+
+```cpp
+flow::execution::inplace_stop_source source;
+auto env = flow::execution::make_env_with_stop_token(
+    source.get_token(),
+    flow::execution::empty_env{}
+);
 ```
 
 ---
@@ -790,6 +918,7 @@ ctest -V
 - **Platform Tests**: OS-specific behavior
 - **Async Scope Tests**: P3149 scope functionality
 - **let_async_scope Tests**: P3296 structured concurrency
+- **when_any Tests**: Racing operations and active cancellation
 
 ---
 
@@ -876,17 +1005,19 @@ See [Contributing](#-contributing) section below!
 
 - ✅ Core sender/receiver model
 - ✅ Standard schedulers (inline, run_loop, thread_pool)
-- ✅ Essential algorithms (then, upon_error, bulk, when_all)
+- ✅ Essential algorithms (then, upon_error, bulk, when_all, when_any)
+- ✅ Stop token support (inplace_stop_token, inplace_stop_source)
+- ✅ Active cancellation in when_any
 - ✅ Async scopes (P3149) - `simple_counting_scope`, `counting_scope`
 - ✅ Structured concurrency (P3296) - `let_async_scope`
 - ✅ Spawn operations (`spawn`, `spawn_future`)
-- ✅ Comprehensive test suite
+- ✅ Comprehensive test suite (23+ categories)
 - ✅ Example programs
 
 ### Future Explorations
 
 - 🔄 **C++23 Modules** - Native module support
-- 🔄 **More algorithms** - `when_any`, `repeat`, `retry`, etc.
+- 🔄 **More algorithms** - `repeat`, `retry`, `split`, etc.
 - 🔄 **Coroutine integration** - `co_await` sender support
 - 🔄 **I/O schedulers** - Async I/O primitives
 - 🔄 **Timer support** - Scheduled/delayed execution
