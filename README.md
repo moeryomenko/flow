@@ -87,11 +87,12 @@ Traditional callback-based or future-based async programming can be complex and 
 - **🔧 Composable** - Rich set of algorithms for building complex async workflows
 - **🧵 Thread Pool** - Built-in thread pool and run loop schedulers
 - **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
+- **🔄 Retry Mechanisms** - `retry`, `retry_n`, `retry_if`, `retry_with_backoff` for resilient error handling
 - **✨ Clean API** - Member function customization points (P2855) for clarity
 - **🚫 Non-blocking Support** - P3669 concurrent schedulers for lock-free integration
 - **� Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
 - **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
-- **� Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
+- **🛑 Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
 - **📦 C++ Modules Ready** - Future-proof module support (experimental)
 - **🧪 Comprehensive Tests** - Extensive test suite with 23+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
@@ -287,6 +288,51 @@ int main() {
 }
 ```
 
+### Retry with Backoff
+
+```cpp
+#include <flow/execution.hpp>
+#include <iostream>
+#include <stdexcept>
+
+using namespace flow::execution;
+
+auto unreliable_api_call(int& attempt) {
+    return just()
+        | then([&attempt] {
+            attempt++;
+            if (attempt < 3) {
+                throw std::runtime_error("Temporary network error");
+            }
+            return "Success!";
+        });
+}
+
+int main() {
+    thread_pool pool{2};
+    int attempt = 0;
+
+    // Retry up to 5 times with exponential backoff
+    auto result = flow::this_thread::sync_wait(
+        unreliable_api_call(attempt)
+        | retry_with_backoff(
+            pool.get_scheduler(),
+            std::chrono::milliseconds(100),  // initial delay
+            std::chrono::milliseconds(2000), // max delay
+            2.0,                             // multiplier
+            5                                // max attempts
+        )
+    );
+
+    if (result) {
+        std::cout << "Result: " << std::get<0>(*result) << '\n';
+        std::cout << "Took " << attempt << " attempts\n";
+    }
+
+    return 0;
+}
+```
+
 ### Parallel Transform
 
 ```cpp
@@ -428,6 +474,7 @@ flow/
 │           ├── factories.hpp       # Sender factories (just, just_error, etc.)
 │           ├── adaptors.hpp        # Sender adaptors (then, upon_error, etc.)
 │           ├── algorithms.hpp      # Advanced algorithms (bulk, when_all, when_any, etc.)
+│           ├── retry.hpp           # Retry mechanisms for error recovery
 │           ├── async_scope.hpp     # Async scope support (P3149, P3296)
 │           ├── schedulers.hpp      # Standard scheduler implementations
 │           ├── stop_token.hpp      # Stop token and cancellation support
@@ -466,7 +513,8 @@ flow/
     ├── async_scope_basic_tests.cpp     # Basic async scope tests (P3149)
     ├── async_scope_comprehensive_tests.cpp  # Comprehensive scope tests
     ├── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
-    └── when_any_tests.cpp              # when_any algorithm tests
+    ├── when_any_tests.cpp              # when_any algorithm tests
+    └── retry_tests.cpp                 # retry algorithms tests
 ```
 
 ---
@@ -611,6 +659,10 @@ Advanced sender operations:
 | `bulk(count, fn)` | Execute function for range [0, count) in parallel |
 | `when_all(senders...)` | Wait for all senders to complete, aggregating results |
 | `when_any(senders...)` | Race senders, first to complete wins (with active cancellation) |
+| `retry()` | Retry indefinitely on error until success |
+| `retry_n(count)` | Retry up to N times on error |
+| `retry_if(predicate)` | Retry only if predicate returns true for the error |
+| `retry_with_backoff(...)` | Retry with exponential backoff delay |
 | `transfer(scheduler)` | Move execution to different scheduler |
 
 ### Async Scope Operations
@@ -636,6 +688,127 @@ auto result = schedule(pool.get_scheduler())
     | upon_error([](auto ep) { /* handle error */ })
     | bulk(100, [](size_t i) { /* parallel work */ });
 ```
+
+---
+
+## 🔄 Retry Mechanisms for Resilient Operations
+
+Flow provides comprehensive retry mechanisms to handle transient failures and build resilient asynchronous applications. All retry algorithms automatically attempt to re-execute failed operations, making your code more robust against temporary errors.
+
+### Basic Retry - Unlimited Attempts
+
+The `retry()` algorithm retries indefinitely until the operation succeeds:
+
+```cpp
+#include <flow/execution.hpp>
+using namespace flow::execution;
+
+auto flaky_operation = just(42)
+    | then([](int x) {
+        // Might throw occasionally
+        if (random_failure()) {
+            throw std::runtime_error("Transient error");
+        }
+        return x * 2;
+    })
+    | retry();  // Keep trying until success
+
+auto result = flow::this_thread::sync_wait(std::move(flaky_operation));
+```
+
+**Use case**: Operations that should eventually succeed (e.g., connecting to a service that's temporarily down).
+
+### Bounded Retry - Limited Attempts
+
+The `retry_n(count)` algorithm retries up to N times before giving up:
+
+```cpp
+auto operation = risky_sender()
+    | retry_n(3)  // Try up to 3 times total
+    | upon_error([](std::exception_ptr ep) {
+        // Handle final failure after all retries exhausted
+        return fallback_value;
+    });
+```
+
+**Use case**: Operations that might fail permanently (e.g., invalid user input, non-existent resources).
+
+### Conditional Retry - Selective Error Handling
+
+The `retry_if(predicate)` algorithm retries only when the predicate returns true:
+
+```cpp
+auto selective_retry = fetch_data()
+    | retry_if([](std::exception_ptr ep) {
+        try {
+            std::rethrow_exception(ep);
+        } catch (const network_timeout& e) {
+            return true;   // Retry on timeout
+        } catch (const not_found_error& e) {
+            return false;  // Don't retry on 404
+        } catch (...) {
+            return false;  // Don't retry on other errors
+        }
+    });
+```
+
+**Use case**: Distinguishing between transient failures (network timeout) and permanent failures (resource not found).
+
+### Exponential Backoff - Smart Retry Delays
+
+The `retry_with_backoff(...)` algorithm implements exponential backoff to avoid overwhelming failing services:
+
+```cpp
+thread_pool pool{4};
+
+auto resilient_api_call = api_request()
+    | retry_with_backoff(
+        pool.get_scheduler(),            // Scheduler for delays
+        std::chrono::milliseconds(100),  // Initial delay: 100ms
+        std::chrono::milliseconds(5000), // Max delay: 5s
+        2.0,                             // Multiplier: double each time
+        10                               // Max attempts: 10
+    );
+
+// Retry delays: 100ms, 200ms, 400ms, 800ms, 1600ms, 3200ms, 5000ms (capped), ...
+```
+
+**Use case**: API calls, database connections, or any external service that might be temporarily overloaded.
+
+### Retry Composition
+
+Retry algorithms compose naturally with other sender operations:
+
+```cpp
+auto robust_pipeline = schedule(pool.get_scheduler())
+    | then([] { return fetch_user_data(); })
+    | retry_n(3)                           // Retry fetch up to 3 times
+    | then([](auto data) {
+        return process_data(data);
+    })
+    | upon_error([](std::exception_ptr ep) {
+        log_error(ep);
+        return default_result;
+    });
+```
+
+### Key Features
+
+- **🔁 Automatic Retry**: Transparent retry logic without manual loops
+- **🎯 Selective Recovery**: Choose which errors to retry
+- **⏱️ Smart Backoff**: Exponential delays prevent service overload
+- **🔗 Composable**: Works seamlessly with other sender operations
+- **🛑 Cancellation-Aware**: Respects stop tokens and cancellation requests
+- **📊 Type-Safe**: Preserves completion signatures through retry chain
+
+### Best Practices
+
+1. **Use `retry_n()` by default** to prevent infinite loops
+2. **Implement backoff for external services** to be a good citizen
+3. **Use `retry_if()` for selective retry** based on error types
+4. **Log retry attempts** for debugging and monitoring
+5. **Set reasonable limits** on attempts and delays
+6. **Combine with timeouts** to prevent hanging operations
 
 ---
 
@@ -919,6 +1092,7 @@ ctest -V
 - **Async Scope Tests**: P3149 scope functionality
 - **let_async_scope Tests**: P3296 structured concurrency
 - **when_any Tests**: Racing operations and active cancellation
+- **Retry Tests**: Retry mechanisms and error recovery
 
 ---
 
@@ -1011,13 +1185,14 @@ See [Contributing](#-contributing) section below!
 - ✅ Async scopes (P3149) - `simple_counting_scope`, `counting_scope`
 - ✅ Structured concurrency (P3296) - `let_async_scope`
 - ✅ Spawn operations (`spawn`, `spawn_future`)
+- ✅ Retry mechanisms - `retry`, `retry_n`, `retry_if`, `retry_with_backoff`
 - ✅ Comprehensive test suite (23+ categories)
 - ✅ Example programs
 
 ### Future Explorations
 
 - 🔄 **C++23 Modules** - Native module support
-- 🔄 **More algorithms** - `repeat`, `retry`, `split`, etc.
+- 🔄 **More algorithms** - `repeat`, `split`, `timeout`, etc.
 - 🔄 **Coroutine integration** - `co_await` sender support
 - 🔄 **I/O schedulers** - Async I/O primitives
 - 🔄 **Timer support** - Scheduled/delayed execution

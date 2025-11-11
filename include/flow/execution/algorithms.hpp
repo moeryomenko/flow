@@ -10,6 +10,7 @@
 
 #include "completion_signatures.hpp"
 #include "env.hpp"
+#include "retry.hpp"
 #include "sender.hpp"
 #include "stop_token.hpp"
 #include "type_list.hpp"
