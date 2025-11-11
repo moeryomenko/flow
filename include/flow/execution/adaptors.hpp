@@ -49,6 +49,18 @@ struct _wrap_in_type_list<void> {
 template <class T>
 using wrap_in_type_list_t = typename _wrap_in_type_list<T>::type;
 
+// Helper to convert type_list to set_value_t signature
+template <class TypeList>
+struct _type_list_to_set_value;
+
+template <class... Ts>
+struct _type_list_to_set_value<type_list<Ts...>> {
+  using type = set_value_t(Ts...);
+};
+
+template <class TypeList>
+using type_list_to_set_value_t = typename _type_list_to_set_value<TypeList>::type;
+
 }  // namespace _then_detail
 
 // [exec.adaptors.then], then adaptor
@@ -63,10 +75,9 @@ struct _then_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    // Simplified: assumes F returns a value or throws
-    using result_t = std::invoke_result_t<F>;
-    return completion_signatures<set_value_t(result_t), set_error_t(std::exception_ptr),
-                                 set_stopped_t()>{};
+    // Convert value_types (type_list) to proper set_value_t signature
+    using set_value_sig = _then_detail::type_list_to_set_value_t<value_types>;
+    return completion_signatures<set_value_sig, set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
   template <receiver R>
@@ -150,6 +161,18 @@ struct _wrap_result<void> {
 template <class T>
 using wrap_result_t = typename _wrap_result<T>::type;
 
+// Helper to convert type_list to set_value_t signature
+template <class TypeList>
+struct _type_list_to_set_value;
+
+template <class... Ts>
+struct _type_list_to_set_value<type_list<Ts...>> {
+  using type = set_value_t(Ts...);
+};
+
+template <class TypeList>
+using type_list_to_set_value_t = typename _type_list_to_set_value<TypeList>::type;
+
 }  // namespace _upon_error_detail
 
 // [exec.adaptors.upon_error], upon_error adaptor
@@ -165,7 +188,9 @@ struct _upon_error_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
+    // Convert value_types (type_list) to proper set_value_t signature
+    using set_value_sig = _upon_error_detail::type_list_to_set_value_t<value_types>;
+    return completion_signatures<set_value_sig, set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
   template <receiver R>
@@ -224,7 +249,13 @@ struct _upon_stopped_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
+    if constexpr (std::is_void_v<std::invoke_result_t<F>>) {
+      return completion_signatures<set_value_t(), set_error_t(std::exception_ptr),
+                                   set_stopped_t()>{};
+    } else {
+      return completion_signatures<set_value_t(std::invoke_result_t<F>),
+                                   set_error_t(std::exception_ptr), set_stopped_t()>{};
+    }
   }
 
   template <receiver R>
@@ -290,6 +321,18 @@ struct _deduce_let_value_result {
 template <class S, class F>
 using deduce_let_value_result_t = typename _deduce_let_value_result<S, F>::type;
 
+// Helper to convert type_list to set_value_t signature (same as in _then_detail)
+template <class TypeList>
+struct _type_list_to_set_value;
+
+template <class... Ts>
+struct _type_list_to_set_value<type_list<Ts...>> {
+  using type = set_value_t(Ts...);
+};
+
+template <class TypeList>
+using type_list_to_set_value_t = typename _type_list_to_set_value<TypeList>::type;
+
 }  // namespace _let_value_detail
 
 // [exec.adaptors.let_value], let_value adaptor
@@ -304,8 +347,9 @@ struct _let_value_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    // The completion signatures depend on what sender F returns
-    return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
+    // Convert value_types (type_list) to proper set_value_t signature
+    using set_value_sig = _let_value_detail::type_list_to_set_value_t<value_types>;
+    return completion_signatures<set_value_sig, set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
   template <receiver R>
@@ -362,7 +406,9 @@ struct _let_error_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
+    // Convert value_types (type_list) to proper set_value_t signature
+    using set_value_sig = _let_value_detail::type_list_to_set_value_t<value_types>;
+    return completion_signatures<set_value_sig, set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
   template <receiver R>
@@ -419,7 +465,9 @@ struct _let_stopped_sender {
 
   template <class Env>
   auto get_completion_signatures(Env&& /*unused*/) const {
-    return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
+    // Convert value_types (type_list) to proper set_value_t signature
+    using set_value_sig = _let_value_detail::type_list_to_set_value_t<value_types>;
+    return completion_signatures<set_value_sig, set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
   template <receiver R>

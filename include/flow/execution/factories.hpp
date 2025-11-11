@@ -26,7 +26,19 @@ struct _just_sender {
 
   std::tuple<Vs...> values_;
 
+  // Default constructor for empty parameter pack
+  _just_sender()
+    requires(sizeof...(Vs) == 0)
+  = default;
+
+  // Allow implicit copy/move constructors
+  _just_sender(const _just_sender&)            = default;
+  _just_sender(_just_sender&&)                 = default;
+  _just_sender& operator=(const _just_sender&) = default;
+  _just_sender& operator=(_just_sender&&)      = default;
+
   template <class... Ts>
+    requires(sizeof...(Ts) == sizeof...(Vs) && sizeof...(Ts) > 0)
   explicit _just_sender(Ts&&... ts) : values_(std::forward<Ts>(ts)...) {}
 
   template <class Env>
@@ -34,12 +46,14 @@ struct _just_sender {
     return completion_signatures<set_value_t(Vs...)>{};
   }
 
-  template <receiver R>
+  template <class R>
+    requires receiver<R>
   auto connect(R&& r) && {
     return _just_operation<R, Vs...>{std::move(values_), std::forward<R>(r)};
   }
 
-  template <receiver R>
+  template <class R>
+    requires receiver<R>
   auto connect(R&& r) & {
     return _just_operation<R, Vs...>{values_, std::forward<R>(r)};
   }
@@ -87,6 +101,7 @@ struct _just_error_sender {
   E error_;
 
   template <class Err>
+    requires(!std::same_as<std::decay_t<Err>, _just_error_sender>)
   explicit _just_error_sender(Err&& e) : error_(std::forward<Err>(e)) {}
 
   template <class Env>
@@ -94,12 +109,14 @@ struct _just_error_sender {
     return completion_signatures<set_error_t(E)>{};
   }
 
-  template <receiver R>
+  template <class R>
+    requires receiver<R>
   auto connect(R&& r) && {
     return _just_error_operation<R, E>{std::move(error_), std::forward<R>(r)};
   }
 
-  template <receiver R>
+  template <class R>
+    requires receiver<R>
   auto connect(R&& r) & {
     return _just_error_operation<R, E>{error_, std::forward<R>(r)};
   }
@@ -139,7 +156,8 @@ struct _just_stopped_sender {
     return completion_signatures<set_stopped_t()>{};
   }
 
-  template <receiver R>
+  template <class R>
+    requires receiver<R>
   auto connect(R&& r) && {
     return _just_stopped_operation<R>{std::forward<R>(r)};
   }

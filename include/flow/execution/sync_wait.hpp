@@ -105,15 +105,15 @@ struct _sync_wait_with_types_t {
             // Stopped
             return std::nullopt;
           } else if constexpr (std::is_same_v<T, std::tuple<Ts...>>) {
-            // Success
-            return result;
+            // Success - move from the result
+            return std::optional<std::tuple<Ts...>>{std::forward<decltype(result)>(result)};
           } else if constexpr (std::is_same_v<T, std::exception_ptr>) {
             // Error
             std::rethrow_exception(result);
           }
           return std::nullopt;
         },
-        state.result);
+        std::move(state.result));
   }
 };
 
@@ -138,6 +138,43 @@ using type_list_to_tuple_t = typename _type_list_to_tuple<T>::type;
 template <class... Ts>
 std::tuple<Ts...> _value_types_from_signature(execution::set_value_t(Ts...));
 
+// Helper to extract just the first set_value_t signature from completion_signatures
+template <class... Sigs>
+struct _find_first_set_value;
+
+// Base case: no set_value_t found, default to empty tuple
+template <>
+struct _find_first_set_value<> {
+  using type = std::tuple<>;
+};
+
+// Found a set_value_t signature
+template <class... Ts, class... Rest>
+struct _find_first_set_value<execution::set_value_t(Ts...), Rest...> {
+  using type = std::tuple<Ts...>;
+};
+
+// Skip non-set_value_t signatures
+template <class Sig, class... Rest>
+struct _find_first_set_value<Sig, Rest...> {
+  using type = typename _find_first_set_value<Rest...>::type;
+};
+
+// Helper to extract value types from completion signatures
+template <class S>
+concept _has_get_completion_signatures = requires(S s) {
+  { s.get_completion_signatures(execution::empty_env{}) };
+};
+
+// Extract value types from completion signatures
+template <class Sigs>
+struct _extract_value_types_from_sigs;
+
+template <class... Sigs>
+struct _extract_value_types_from_sigs<execution::completion_signatures<Sigs...>> {
+  using type = typename _find_first_set_value<Sigs...>::type;
+};
+
 // Try to deduce from completion signatures if available
 template <class S>
 concept _has_value_types_member = requires { typename S::value_types; };
@@ -154,9 +191,18 @@ struct _deduce_value_types {
   using type = std::tuple<int>;
 };
 
-// Try to use the sender's value_types if available
+// Prefer completion signatures if available
 template <class S>
-  requires _has_value_types_member<S>
+  requires _has_get_completion_signatures<S>
+struct _deduce_value_types<S, void> {
+  using type =
+      typename _extract_value_types_from_sigs<decltype(std::declval<S>().get_completion_signatures(
+          execution::empty_env{}))>::type;
+};
+
+// Fallback: use the sender's value_types if available
+template <class S>
+  requires(!_has_get_completion_signatures<S> && _has_value_types_member<S>)
 struct _deduce_value_types<S, void> {
   // Convert from type_list to tuple
   using type = type_list_to_tuple_t<typename S::value_types>;
