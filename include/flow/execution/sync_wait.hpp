@@ -7,7 +7,8 @@
 #include <tuple>
 #include <variant>
 
-#include "execution.hpp"
+#include "receiver.hpp"
+#include "sender.hpp"
 #include "type_list.hpp"
 
 namespace flow::this_thread {
@@ -202,7 +203,7 @@ struct _start_detached_receiver {
   }
 
   template <class E>
-  void set_error(E&& e) && noexcept {
+  void set_error(E&& /*unused*/) && noexcept {
     // In a real implementation, might want to log or report this
     // For now, just terminate since we can't propagate
     std::terminate();

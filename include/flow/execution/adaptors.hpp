@@ -4,9 +4,9 @@
 #include <functional>
 #include <type_traits>
 #include <utility>
-#include <variant>
 
-#include "execution.hpp"
+#include "completion_signatures.hpp"
+#include "sender.hpp"
 #include "type_list.hpp"
 
 namespace flow::execution {
@@ -62,7 +62,7 @@ struct _then_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     // Simplified: assumes F returns a value or throws
     using result_t = std::invoke_result_t<F>;
     return completion_signatures<set_value_t(result_t), set_error_t(std::exception_ptr),
@@ -164,7 +164,7 @@ struct _upon_error_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
@@ -223,7 +223,7 @@ struct _upon_stopped_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
@@ -303,7 +303,7 @@ struct _let_value_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     // The completion signatures depend on what sender F returns
     return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
@@ -361,7 +361,7 @@ struct _let_error_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 
@@ -418,7 +418,7 @@ struct _let_stopped_sender {
   F fun_;
 
   template <class Env>
-  auto get_completion_signatures(Env&& env) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
   }
 

@@ -4,13 +4,13 @@
 #include <condition_variable>
 #include <exception>
 #include <functional>
-#include <memory>
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <vector>
 
-#include "execution.hpp"
+#include "completion_signatures.hpp"
+#include "queries.hpp"
+#include "scheduler.hpp"
 #include "type_list.hpp"
 
 namespace flow::execution {

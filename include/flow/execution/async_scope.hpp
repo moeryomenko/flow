@@ -15,7 +15,6 @@
 #include "completion_signatures.hpp"
 #include "env.hpp"
 #include "operation_state.hpp"
-#include "queries.hpp"
 #include "receiver.hpp"
 #include "sender.hpp"
 #include "utils.hpp"
@@ -369,7 +368,7 @@ struct spawn_future_t {
   }
 
   template <sender Sndr, scope_token Token, class Env>
-  auto operator()(Sndr&& sndr, Token token, Env&& env) const {
+  auto operator()(Sndr&& sndr, Token token, Env&& /*env*/) const {
     using result_t = __spawn_future::result_variant_t<Sndr, Env>;
     auto state     = std::make_shared<__spawn_future::shared_state<result_t>>();
 
