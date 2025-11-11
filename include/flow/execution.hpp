@@ -16,5 +16,6 @@
 #include "execution/async_scope.hpp"  // Async scope support (P3149)
 #include "execution/factories.hpp"    // Sender factories (just, just_error, etc.)
 #include "execution/schedulers.hpp"   // Standard scheduler implementations
+#include "execution/stop_token.hpp"   // Stop token support
 #include "execution/sync_wait.hpp"    // Synchronization utilities
 #include "execution/type_list.hpp"    // Type list utilities

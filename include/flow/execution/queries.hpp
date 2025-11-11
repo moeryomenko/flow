@@ -12,6 +12,7 @@ struct get_domain_t;
 struct get_scheduler_t;
 struct get_delegatee_scheduler_t;
 struct get_forward_progress_guarantee_t;
+struct get_stop_token_t;
 template <class CPO>
 struct get_completion_scheduler_t;
 
