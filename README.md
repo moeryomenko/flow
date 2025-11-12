@@ -90,10 +90,10 @@ Traditional callback-based or future-based async programming can be complex and 
 - **🔄 Retry Mechanisms** - `retry`, `retry_n`, `retry_if`, `retry_with_backoff` for resilient error handling
 - **✨ Clean API** - Member function customization points (P2855) for clarity
 - **🚫 Non-blocking Support** - P3669 concurrent schedulers for lock-free integration
-- **� Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
+- **📦 Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
 - **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
 - **🛑 Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
-- **📦 C++ Modules Ready** - Future-proof module support (experimental)
+- **📦 C++23 Modules** - Experimental module support via CMake's FILE_SET CXX_MODULES
 - **🧪 Comprehensive Tests** - Extensive test suite with 23+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
 
@@ -213,7 +213,68 @@ ctest -V
 | `FLOW_BUILD_EXAMPLES` | `ON` | Build example applications |
 | `FLOW_BUILD_TESTS` | `ON` | Build test suite (requires Boost.UT) |
 | `FLOW_INSTALL` | `ON` | Generate install target |
-| `FLOW_USE_MODULES` | `OFF` | Use C++20 modules (experimental) |
+| `FLOW_USE_MODULES` | `OFF` | Use C++23 modules (experimental, requires CMake 3.28+) |
+
+#### Using C++ Modules (Experimental)
+
+Flow supports C++23 modules through CMake's experimental `FILE_SET CXX_MODULES` feature:
+
+```bash
+# On macOS with Homebrew Clang (Apple Clang doesn't support module scanning)
+brew install llvm ninja
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+
+mkdir build && cd build
+cmake .. -G Ninja \
+  -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_CXX_FLAGS="-isysroot $(xcrun --show-sdk-path) -stdlib=libc++" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++" \
+  -DFLOW_USE_MODULES=ON
+cmake --build .
+```
+
+```bash
+# On Linux with Clang 16+
+mkdir build && cd build
+cmake .. -G Ninja \
+  -DCMAKE_CXX_COMPILER=clang++-16 \
+  -DFLOW_USE_MODULES=ON
+cmake --build .
+```
+
+When using modules, import Flow instead of including headers:
+
+```cpp
+// Traditional header-only mode
+#include <flow/execution.hpp>
+
+// C++ modules mode (when FLOW_USE_MODULES=ON)
+import flow;
+
+using namespace flow::execution;
+
+int main() {
+    thread_pool pool{4};
+    auto work = schedule(pool.get_scheduler()) | then([] {
+        return 42;
+    });
+    auto result = flow::this_thread::sync_wait(work);
+    return 0;
+}
+```
+
+**Requirements for C++ modules:**
+- CMake 3.28 or higher
+- Ninja build system (recommended)
+- Compiler support:
+  - Clang 16+ with libc++ (not Apple Clang - use Homebrew llvm)
+  - GCC 14+ (experimental)
+  - MSVC 19.36+ (Visual Studio 2022 17.6+)
+
+**Important Notes:**
+- Apple Clang does not support CMake's module scanning - use `brew install llvm` and set `CMAKE_CXX_COMPILER` to Homebrew Clang
+- C++ modules support is experimental and may have limited tooling support
+- Module scanning requires additional compile time
 
 ---
 
@@ -1186,12 +1247,12 @@ See [Contributing](#-contributing) section below!
 - ✅ Structured concurrency (P3296) - `let_async_scope`
 - ✅ Spawn operations (`spawn`, `spawn_future`)
 - ✅ Retry mechanisms - `retry`, `retry_n`, `retry_if`, `retry_with_backoff`
+- ✅ C++23 Modules - Experimental support via CMake FILE_SET CXX_MODULES
 - ✅ Comprehensive test suite (23+ categories)
 - ✅ Example programs
 
 ### Future Explorations
 
-- 🔄 **C++23 Modules** - Native module support
 - 🔄 **More algorithms** - `repeat`, `split`, `timeout`, etc.
 - 🔄 **Coroutine integration** - `co_await` sender support
 - 🔄 **I/O schedulers** - Async I/O primitives

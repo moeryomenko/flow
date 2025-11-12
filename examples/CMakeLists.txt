@@ -1,3 +1,7 @@
+# Build examples
+# Note: When FLOW_USE_MODULES is ON, source files should use 'import flow;'
+# instead of '#include "flow/execution.hpp"'
+
 add_executable(hello_world hello_world.cpp)
 target_link_libraries(hello_world PRIVATE flow::flow)
 

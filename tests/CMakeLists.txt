@@ -37,6 +37,8 @@ set(
 )
 
 # Create test executables and register them
+# Note: When FLOW_USE_MODULES is ON, test files should use 'import flow;'
+# instead of '#include "flow/execution.hpp"'
 foreach(TEST_SOURCE ${TEST_SOURCES})
   get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
   add_executable(${TEST_NAME} ${TEST_SOURCE})

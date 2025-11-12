@@ -1,11 +1,17 @@
 // module_tests.cpp
 // Module import and boundary tests for flow::execution
-// See TESTING_PLAN.md section 6
+// Tests that the library works correctly whether using traditional
+// includes or C++ modules
 
 #include <boost/ut.hpp>
-// Note: C++20 modules may not be fully supported yet
-// Using traditional includes for now
+
+// When building with C++ modules, import the flow module
+// Otherwise, use traditional includes
+#if defined(__cpp_modules) && __cpp_modules >= 201907L
+import flow;
+#else
 #include <flow/execution.hpp>
+#endif
 
 int main() {
   using namespace boost::ut;
@@ -51,10 +57,10 @@ int main() {
     using namespace flow::execution;
 
     // All should be accessible
-    auto             s1 = just(42);
-    inline_scheduler sch;
-    auto             s2     = schedule(sch);
-    auto             result = flow::this_thread::sync_wait(std::move(s1));
+    auto                  s1 = just(42);
+    inline_scheduler      sch;
+    [[maybe_unused]] auto s2     = schedule(sch);
+    auto                  result = flow::this_thread::sync_wait(std::move(s1));
 
     expect(result.has_value());
   };
