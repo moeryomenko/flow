@@ -1,7 +1,3 @@
-// factory_tests.cpp
-// Sender factory tests (just, just_error, just_stopped, schedule)
-// See TESTING_PLAN.md section 8.1
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <stdexcept>
@@ -42,7 +38,7 @@ int main() {
                 return 0;
               });
 
-    auto result = flow::this_thread::sync_wait(std::move(s2));
+    [[maybe_unused]] auto result = flow::this_thread::sync_wait(std::move(s2));
     expect(error_received);
   };
 
@@ -51,7 +47,7 @@ int main() {
   "schedule"_test = [] {
     inline_scheduler sch;
     auto             s      = schedule(sch);
-    auto             result = flow::this_thread::sync_wait(std::move(s));
+    auto             result = flow::this_thread::sync_wait(s);
 
     expect(result.has_value());
   };

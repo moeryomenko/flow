@@ -1,7 +1,3 @@
-// scheduler_tests.cpp
-// Scheduler tests (inline, thread_pool, run_loop, concurrent)
-// See TESTING_PLAN.md section 7
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <thread>
@@ -14,8 +10,8 @@ int main() {
     inline_scheduler sch;
     bool             executed = false;
 
-    auto work   = schedule(sch) | then([&] { executed = true; });
-    auto result = flow::this_thread::sync_wait(std::move(work));
+    auto                  work   = schedule(sch) | then([&] { executed = true; });
+    [[maybe_unused]] auto result = flow::this_thread::sync_wait(work);
 
     expect(executed);
   };
@@ -27,14 +23,14 @@ int main() {
 
     auto work = schedule(sch) | then([&] { work_thread = std::this_thread::get_id(); });
 
-    flow::this_thread::sync_wait(std::move(work));
+    flow::this_thread::sync_wait(work);
 
     expect(work_thread == main_thread);
   };
 
   "inline_scheduler_forward_progress"_test = [] {
-    inline_scheduler sch;
-    auto             fpg = sch.query(get_forward_progress_guarantee);
+    [[maybe_unused]] inline_scheduler sch;
+    auto fpg = flow::execution::inline_scheduler::query(get_forward_progress_guarantee);
 
     expect(fpg == forward_progress_guarantee::weakly_parallel);
   };

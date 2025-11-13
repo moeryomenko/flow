@@ -1,7 +1,3 @@
-// customization_point_tests.cpp
-// Member function customization point tests (P2855)
-// See TESTING_PLAN.md section 4
-
 #include <boost/ut.hpp>
 #include <exception>
 #include <flow/execution.hpp>
@@ -15,15 +11,15 @@ struct test_receiver {
   bool* set_error_called;
   bool* set_stopped_called;
 
-  void set_value() && noexcept {
+  void set_value() const&& noexcept {
     *set_value_called = true;
   }
 
-  void set_error(std::exception_ptr) && noexcept {
+  void set_error(std::exception_ptr /*unused*/) const&& noexcept {
     *set_error_called = true;
   }
 
-  void set_stopped() && noexcept {
+  void set_stopped() const&& noexcept {
     *set_stopped_called = true;
   }
 };
@@ -31,7 +27,7 @@ struct test_receiver {
 struct tagged_receiver {
   using receiver_concept = flow::execution::receiver_t;
   void set_value() && noexcept {}
-  void set_error(std::exception_ptr) && noexcept {}
+  void set_error(std::exception_ptr /*unused*/) && noexcept {}
   void set_stopped() && noexcept {}
 };
 
@@ -39,7 +35,7 @@ struct tagged_sender {
   using sender_concept = flow::execution::sender_t;
 
   template <class Env>
-  auto get_completion_signatures(Env&&) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return flow::execution::completion_signatures<flow::execution::set_value_t()>{};
   }
 };
@@ -51,7 +47,7 @@ struct tagged_op_state {
 
 struct tagged_scheduler {
   using scheduler_concept = flow::execution::scheduler_t;
-  auto schedule() const {
+  [[nodiscard]] static auto schedule() {
     return tagged_sender{};
   }
   bool operator==(const tagged_scheduler&) const = default;
@@ -64,8 +60,12 @@ int main() {
   using namespace test_types;
 
   "receiver_member_function_calls"_test = [] {
-    bool          value_called = false, error_called = false, stopped_called = false;
-    test_receiver r{&value_called, &error_called, &stopped_called};
+    bool          value_called   = false;
+    bool          error_called   = false;
+    bool          stopped_called = false;
+    test_receiver r{.set_value_called   = &value_called,
+                    .set_error_called   = &error_called,
+                    .set_stopped_called = &stopped_called};
 
     std::move(r).set_value();
     expect(value_called);

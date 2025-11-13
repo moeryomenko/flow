@@ -1,7 +1,7 @@
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
-#include <string>
-#include <vector>
+
+using std::move;
 
 int main() {
   using namespace boost::ut;
@@ -88,7 +88,7 @@ int main() {
                     return 42;
                   });
 
-    auto result = sync_wait(std::move(sender));
+    auto result = sync_wait(sender);
     expect(result.has_value());
     expect(std::get<0>(*result) == 42_i);
     expect(counter.load() == 1_i);

@@ -1,7 +1,3 @@
-// compilation_tests.cpp
-// Compilation, SFINAE, and error message tests
-// See TESTING_PLAN.md section 12
-
 #include <flow/execution.hpp>
 
 // These are mostly static_asserts and compile-only tests
@@ -32,8 +28,8 @@ static_assert(sender<decltype(just(1) | then([](int) { return 2.0; }))>,
 // Test: receiver_of concept with different types
 struct int_receiver {
   using receiver_concept = receiver_t;
-  void set_value(int) && noexcept {}
-  void set_error(std::exception_ptr) && noexcept {}
+  void set_value(int /*unused*/) && noexcept {}
+  void set_error(std::exception_ptr /*unused*/) && noexcept {}
   void set_stopped() && noexcept {}
 };
 
@@ -58,7 +54,7 @@ static_assert(sender<decltype(just(1))>, "just(1) should be a sender");
 static_assert(sender<decltype(just(1, 2, 3))>, "just(1,2,3) should be a sender");
 
 // Test: scheduler schedule returns sender
-static_assert(sender<decltype(std::declval<inline_scheduler>().schedule())>,
+static_assert(sender<decltype(flow::execution::inline_scheduler::schedule())>,
               "schedule() should return a sender");
 
 }  // namespace flow::execution::tests

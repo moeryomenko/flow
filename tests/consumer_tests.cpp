@@ -1,12 +1,5 @@
-// consumer_tests.cpp
-// Sender consumer tests (sync_wait, start_detached, etc.)
-// See TESTING_PLAN.md section 8.3
-
-#include <atomic>
 #include <boost/ut.hpp>
-#include <chrono>
 #include <flow/execution.hpp>
-#include <thread>
 
 int main() {
   using namespace boost::ut;

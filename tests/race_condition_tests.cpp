@@ -1,7 +1,3 @@
-// race_condition_tests.cpp
-// Race condition and thread safety tests
-// See TESTING_PLAN.md section 11.4
-
 #include <atomic>
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
@@ -18,11 +14,12 @@ int main() {
     const int        increments_per_thread = 100;
 
     std::vector<std::thread> threads;
+    threads.reserve(num_threads);
     for (int i = 0; i < num_threads; ++i) {
       threads.emplace_back([&] {
         for (int j = 0; j < increments_per_thread; ++j) {
           auto s = just() | then([&] { counter.fetch_add(1); });
-          flow::this_thread::sync_wait(std::move(s));
+          flow::this_thread::sync_wait(s);
         }
       });
     }
@@ -39,6 +36,7 @@ int main() {
     const int        num_operations = 100;
 
     std::vector<std::thread> threads;
+    threads.reserve(num_operations);
     for (int i = 0; i < num_operations; ++i) {
       threads.emplace_back([&] {
         auto s      = just(42) | then([](int x) { return x * 2; });
@@ -65,7 +63,7 @@ int main() {
                  int old = shared_value.load();
                  shared_value.store(old + 1);
                });
-      flow::this_thread::sync_wait(std::move(s));
+      flow::this_thread::sync_wait(s);
     }
 
     expect(shared_value.load() == num_iterations);

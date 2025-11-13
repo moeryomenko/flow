@@ -1,7 +1,3 @@
-// resource_management_tests.cpp
-// Resource management and move/RAII/lifetime tests
-// See TESTING_PLAN.md section 11.3
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <memory>
@@ -18,15 +14,16 @@ int main() {
         (*counter)++;
       }
       ~resource_tracker() {
-        if (counter)
+        if (counter) {
           (*counter)--;
+        }
       }
       resource_tracker(const resource_tracker&) = delete;
-      resource_tracker(resource_tracker&& other) : counter(other.counter) {
+      resource_tracker(resource_tracker&& other) noexcept : counter(other.counter) {
         other.counter = nullptr;
       }
 
-      int value() const {
+      [[nodiscard]] static int value() {
         return 42;
       }
     };
@@ -34,8 +31,9 @@ int main() {
     int resource_count = 0;
 
     {
-      auto s = just(resource_tracker{&resource_count})
-               | then([](resource_tracker rt) { return rt.value(); });
+      auto s =
+          just(resource_tracker{&resource_count})
+          | then([]([[maybe_unused]] resource_tracker rt) { return resource_tracker::value(); });
 
       expect(resource_count == 1_i);
 
@@ -57,9 +55,10 @@ int main() {
       move_only(const move_only&)            = delete;
       move_only& operator=(const move_only&) = delete;
 
-      move_only(move_only&& other) : value(other.value), moved_from(other.moved_from) {
-        if (other.moved_from)
+      move_only(move_only&& other) noexcept : value(other.value), moved_from(other.moved_from) {
+        if (other.moved_from) {
           *other.moved_from = true;
+        }
       }
 
       move_only& operator=(move_only&&) = default;
@@ -93,21 +92,22 @@ int main() {
         (*cons)++;
       }
       ~lifetime_tracker() {
-        if (dest)
+        if (dest) {
           (*dest)++;
+        }
       }
       lifetime_tracker(const lifetime_tracker&) = delete;
-      lifetime_tracker(lifetime_tracker&& other) : cons(other.cons), dest(other.dest) {
+      lifetime_tracker(lifetime_tracker&& other) noexcept : cons(other.cons), dest(other.dest) {
         other.dest = nullptr;
       }
 
-      int value() const {
+      [[nodiscard]] static int value() {
         return 42;
       }
     };
 
     auto s = just(lifetime_tracker{&constructed, &destructed})
-             | then([](lifetime_tracker lt) { return lt.value(); });
+             | then([]([[maybe_unused]] lifetime_tracker lt) { return lifetime_tracker::value(); });
     expect(constructed == 1_i);
     expect(destructed == 0_i);
 

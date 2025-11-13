@@ -1,11 +1,7 @@
 // Tests for let_async_scope implementation (P3296R4)
 
 #include <boost/ut.hpp>
-#include <exception>
 #include <flow/execution.hpp>
-#include <stdexcept>
-#include <string>
-#include <thread>
 
 using namespace boost::ut;
 

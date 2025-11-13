@@ -1,7 +1,3 @@
-// concept_tests.cpp
-// Core concept verification tests for flow::execution
-// See TESTING_PLAN.md section 3.1
-
 #include <boost/ut.hpp>
 #include <exception>
 #include <flow/execution.hpp>
@@ -11,14 +7,14 @@ namespace test_types {
 struct minimal_receiver {
   using receiver_concept = flow::execution::receiver_t;
   void set_value() && noexcept {}
-  void set_error(std::exception_ptr) && noexcept {}
+  void set_error(std::exception_ptr /*unused*/) && noexcept {}
   void set_stopped() && noexcept {}
 };
 
 struct int_receiver {
   using receiver_concept = flow::execution::receiver_t;
-  void set_value(int) && noexcept {}
-  void set_error(std::exception_ptr) && noexcept {}
+  void set_value(int /*unused*/) && noexcept {}
+  void set_error(std::exception_ptr /*unused*/) && noexcept {}
   void set_stopped() && noexcept {}
 };
 
@@ -33,7 +29,7 @@ struct move_only_receiver {
   move_only_receiver& operator=(const move_only_receiver&) = delete;
 
   void set_value() && noexcept {}
-  void set_error(std::exception_ptr) && noexcept {}
+  void set_error(std::exception_ptr /*unused*/) && noexcept {}
   void set_stopped() && noexcept {}
 };
 
@@ -41,7 +37,7 @@ struct minimal_sender {
   using sender_concept = flow::execution::sender_t;
 
   template <class Env>
-  auto get_completion_signatures(Env&&) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return flow::execution::completion_signatures<flow::execution::set_value_t()>{};
   }
 };
@@ -54,7 +50,7 @@ struct minimal_operation_state {
 struct minimal_scheduler {
   using scheduler_concept = flow::execution::scheduler_t;
 
-  auto schedule() const {
+  [[nodiscard]] static auto schedule() {
     return minimal_sender{};
   }
   bool operator==(const minimal_scheduler&) const = default;

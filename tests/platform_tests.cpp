@@ -1,7 +1,3 @@
-// platform_tests.cpp
-// Platform, compiler, and architecture-specific tests
-// See TESTING_PLAN.md section 13
-
 #include <atomic>
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
@@ -32,7 +28,7 @@ int main() {
 
     for (int i = 0; i < iterations; ++i) {
       auto s = just() | then([&] { counter.fetch_add(1); });
-      flow::this_thread::sync_wait(std::move(s));
+      flow::this_thread::sync_wait(s);
     }
 
     expect(counter.load() == iterations);
@@ -57,7 +53,7 @@ int main() {
                shared_data = 42;
              });
 
-    flow::this_thread::sync_wait(std::move(s));
+    flow::this_thread::sync_wait(s);
 
     std::lock_guard<std::mutex> lock(mtx);
     expect(shared_data == 42_i);

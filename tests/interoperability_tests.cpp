@@ -1,10 +1,5 @@
-// interoperability_tests.cpp
-// Interoperability and coroutine/networking/GPU tests
-// See TESTING_PLAN.md section 10
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
-#include <future>
 #include <thread>
 
 int main() {
@@ -12,15 +7,15 @@ int main() {
   using namespace flow::execution;
 
   "std_thread_compatibility"_test = [] {
-    std::thread::id work_thread;
-    std::thread::id main_thread = std::this_thread::get_id();
+    std::thread::id                  work_thread;
+    [[maybe_unused]] std::thread::id main_thread = std::this_thread::get_id();
 
     auto s = just() | then([&] {
                work_thread = std::this_thread::get_id();
                return 42;
              });
 
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    auto result = flow::this_thread::sync_wait(s);
     expect(result.has_value());
     expect(std::get<0>(*result) == 42_i);
   };

@@ -24,7 +24,7 @@ auto main() -> int {
   "inline_scheduler"_test = [] {
     inline_scheduler sch;
     auto             s      = schedule(sch) | then([] { return 99; });
-    auto             result = flow::this_thread::sync_wait(std::move(s));
+    auto             result = flow::this_thread::sync_wait(s);
 
     expect(result.has_value());
     expect(std::get<0>(*result) == 99_i);
@@ -43,7 +43,7 @@ auto main() -> int {
   "thread_pool"_test = [] {
     thread_pool pool{2};
     auto        s      = schedule(pool.get_scheduler()) | then([] { return 123; });
-    auto        result = flow::this_thread::sync_wait(std::move(s));
+    auto        result = flow::this_thread::sync_wait(s);
 
     expect(result.has_value());
     expect(std::get<0>(*result) == 123_i);

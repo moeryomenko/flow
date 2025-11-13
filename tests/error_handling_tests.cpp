@@ -1,7 +1,3 @@
-// error_handling_tests.cpp
-// Exception safety and cancellation tests for flow::execution
-// See TESTING_PLAN.md section 11
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <stdexcept>
@@ -69,14 +65,15 @@ int main() {
                return 42;
              });
 
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    auto result = flow::this_thread::sync_wait(s);
+
     expect(stopped_handled);
     expect(std::get<0>(*result) == 42_i);
   };
 
   "error_then_stopped"_test = [] {
-    bool error_handler_called   = false;
-    bool stopped_handler_called = false;
+    bool                  error_handler_called   = false;
+    [[maybe_unused]] bool stopped_handler_called = false;
 
     auto s = just_error(std::make_exception_ptr(std::runtime_error("err")))
              | upon_error([&](std::exception_ptr) {

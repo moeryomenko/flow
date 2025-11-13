@@ -5,7 +5,6 @@
 #include <flow/execution.hpp>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 using namespace boost::ut;
 using namespace flow::execution;
@@ -25,7 +24,7 @@ struct failing_sender {
   T                 success_value;
 
   template <class Env>
-  auto get_completion_signatures(Env&&) const {
+  auto get_completion_signatures(Env&& /*unused*/) const {
     return completion_signatures<set_value_t(T), set_error_t(std::exception_ptr),
                                  set_stopped_t()>{};
   }
@@ -263,7 +262,7 @@ struct test_scheduler {
     using sender_concept = flow::execution::sender_t;
 
     template <class Env>
-    auto get_completion_signatures(Env&&) const {
+    auto get_completion_signatures(Env&& /*unused*/) const {
       return completion_signatures<set_value_t()>{};
     }
 
@@ -280,7 +279,7 @@ struct test_scheduler {
     }
   };
 
-  auto schedule() const {
+  [[nodiscard]] static auto schedule() {
     return sender_t{};
   }
 
@@ -296,8 +295,9 @@ int main() {
 
   "retry - succeeds after failures"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 3, 42} | retry();
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 3, .success_value = 42}
+                | retry();
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 42));
@@ -306,8 +306,9 @@ int main() {
 
   "retry - immediate success"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 0, 99} | retry();
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 0, .success_value = 99}
+                | retry();
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 99));
@@ -316,8 +317,10 @@ int main() {
 
   "retry - many retries"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 10, 777} | retry();
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr =
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 10, .success_value = 777}
+        | retry();
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 777));
@@ -326,7 +329,10 @@ int main() {
 
   "retry - forwards value types correctly"_test = [] {
     std::atomic<int> attempts{0};
-    auto sndr   = failing_sender<std::string>{attempts, 1, std::string("success")} | retry();
+    auto             sndr =
+        failing_sender<std::string>{
+            .attempt_count = attempts, .fail_times = 1, .success_value = std::string("success")}
+        | retry();
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());
@@ -336,7 +342,7 @@ int main() {
   "retry - stopped signal propagates"_test = [] {
     std::atomic<int> attempts{0};
     auto             sndr   = stopped_sender{attempts} | retry();
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             result = flow::this_thread::sync_wait(sndr);
 
     expect(!result.has_value());     // stopped doesn't produce a value
     expect(eq(attempts.load(), 1));  // Only one attempt
@@ -344,8 +350,9 @@ int main() {
 
   "retry - pipeable syntax"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 1, 42} | retry();
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}
+                | retry();
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -353,8 +360,9 @@ int main() {
 
   "retry - function call syntax"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = retry(failing_sender<int>{attempts, 1, 42});
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr =
+        retry(failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42});
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -366,8 +374,9 @@ int main() {
 
   "retry_n - succeeds within attempts"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 2, 42} | retry_n(5);
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 2, .success_value = 42}
+                | retry_n(5);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 42));
@@ -376,8 +385,8 @@ int main() {
 
   "retry_n - fails after max attempts"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr = always_failing_sender{attempts, "Always fails"} | retry_n(3)
-                | upon_error([](std::exception_ptr) { return 0; });
+    auto sndr = always_failing_sender{.attempt_count = attempts, .error_message = "Always fails"}
+                | retry_n(3) | upon_error([](std::exception_ptr) { return 0; });
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());
@@ -387,8 +396,8 @@ int main() {
 
   "retry_n - max_attempts = 1 means no retry"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr = always_failing_sender{attempts, "Fail"} | retry_n(1)
-                | upon_error([](std::exception_ptr) { return 0; });
+    auto sndr = always_failing_sender{.attempt_count = attempts, .error_message = "Fail"}
+                | retry_n(1) | upon_error([](std::exception_ptr) { return 0; });
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());
@@ -397,8 +406,10 @@ int main() {
 
   "retry_n - immediate success with retry_n"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 0, 123} | retry_n(10);
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr =
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 0, .success_value = 123}
+        | retry_n(10);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 123));
@@ -407,8 +418,10 @@ int main() {
 
   "retry_n - exact max attempts"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 4, 999} | retry_n(5);
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr =
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 4, .success_value = 999}
+        | retry_n(5);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 999));
@@ -417,9 +430,10 @@ int main() {
 
   "retry_n - one short of max attempts fails"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr = failing_sender<int>{attempts, 5, 999} | retry_n(5)
-                | upon_error([](std::exception_ptr) { return -1; });
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr =
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 5, .success_value = 999}
+        | retry_n(5) | upon_error([](std::exception_ptr) { return -1; });
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), -1));
@@ -428,8 +442,9 @@ int main() {
 
   "retry_n - pipeable syntax"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = failing_sender<int>{attempts, 1, 42} | retry_n(3);
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}
+                | retry_n(3);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -437,8 +452,9 @@ int main() {
 
   "retry_n - function call syntax"_test = [] {
     std::atomic<int> attempts{0};
-    auto             sndr   = retry_n(failing_sender<int>{attempts, 1, 42}, 3);
-    auto             result = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr = retry_n(
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}, 3);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -461,8 +477,9 @@ int main() {
       }
     };
 
-    auto sndr   = failing_sender<int>{attempts, 2, 42} | retry_if(predicate);
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 2, .success_value = 42}
+                | retry_if(predicate);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 42));
@@ -476,8 +493,8 @@ int main() {
       return false;  // Never retry
     };
 
-    auto sndr = always_failing_sender{attempts, "Fail"} | retry_if(predicate)
-                | upon_error([](std::exception_ptr) { return 0; });
+    auto sndr = always_failing_sender{.attempt_count = attempts, .error_message = "Fail"}
+                | retry_if(predicate) | upon_error([](std::exception_ptr) { return 0; });
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());
@@ -491,8 +508,9 @@ int main() {
       return true;  // Always retry
     };
 
-    auto sndr   = failing_sender<int>{attempts, 5, 42} | retry_if(predicate);
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 5, .success_value = 42}
+                | retry_if(predicate);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 6));  // 5 retries + 1 success
@@ -511,8 +529,11 @@ int main() {
       }
     };
 
-    auto sndr   = typed_failing_sender{attempts, 2, 503, 42} | retry_if(predicate);
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr =
+        typed_failing_sender{
+            .attempt_count = attempts, .fail_times = 2, .error_code = 503, .success_value = 42}
+        | retry_if(predicate);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 3));
@@ -531,9 +552,11 @@ int main() {
       }
     };
 
-    auto sndr = typed_failing_sender{attempts, 10, 404, 42} | retry_if(predicate)
-                | upon_error([](std::exception_ptr) { return -1; });
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr =
+        typed_failing_sender{
+            .attempt_count = attempts, .fail_times = 10, .error_code = 404, .success_value = 42}
+        | retry_if(predicate) | upon_error([](std::exception_ptr) { return -1; });
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), -1));
@@ -543,8 +566,9 @@ int main() {
   "retry_if - pipeable syntax"_test = [] {
     std::atomic<int> attempts{0};
     auto             predicate = [](std::exception_ptr) { return true; };
-    auto             sndr      = failing_sender<int>{attempts, 1, 42} | retry_if(predicate);
-    auto             result    = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}
+                | retry_if(predicate);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -553,8 +577,10 @@ int main() {
   "retry_if - function call syntax"_test = [] {
     std::atomic<int> attempts{0};
     auto             predicate = [](std::exception_ptr) { return true; };
-    auto             sndr      = retry_if(failing_sender<int>{attempts, 1, 42}, predicate);
-    auto             result    = flow::this_thread::sync_wait(std::move(sndr));
+    auto             sndr      = retry_if(
+        failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42},
+        predicate);
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -569,10 +595,10 @@ int main() {
     test_scheduler   sch;
 
     auto start = std::chrono::steady_clock::now();
-    auto sndr  = failing_sender<int>{attempts, 2, 42}
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 2, .success_value = 42}
                 | retry_with_backoff(sch, std::chrono::milliseconds(10),
                                      std::chrono::milliseconds(100), 2.0, 5);
-    auto result  = flow::this_thread::sync_wait(std::move(sndr));
+    auto result  = flow::this_thread::sync_wait(sndr);
     auto elapsed = std::chrono::steady_clock::now() - start;
 
     expect(result.has_value());
@@ -586,7 +612,7 @@ int main() {
     std::atomic<int> attempts{0};
     test_scheduler   sch;
 
-    auto sndr = always_failing_sender{attempts, "Fail"}
+    auto sndr = always_failing_sender{.attempt_count = attempts, .error_message = "Fail"}
                 | retry_with_backoff(sch, std::chrono::milliseconds(5),
                                      std::chrono::milliseconds(100), 2.0, 3)
                 | upon_error([](std::exception_ptr) { return -1; });
@@ -601,10 +627,10 @@ int main() {
     test_scheduler   sch;
 
     auto start = std::chrono::steady_clock::now();
-    auto sndr  = failing_sender<int>{attempts, 3, 42}
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 3, .success_value = 42}
                 | retry_with_backoff(sch, std::chrono::milliseconds(10),
                                      std::chrono::milliseconds(1000), 2.0, 5);
-    auto result  = flow::this_thread::sync_wait(std::move(sndr));
+    auto result  = flow::this_thread::sync_wait(sndr);
     auto elapsed = std::chrono::steady_clock::now() - start;
 
     expect(result.has_value());
@@ -619,10 +645,10 @@ int main() {
 
     // With multiplier 10.0 and max_delay 50ms, should cap quickly
     auto start = std::chrono::steady_clock::now();
-    auto sndr  = failing_sender<int>{attempts, 3, 42}
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 3, .success_value = 42}
                 | retry_with_backoff(sch, std::chrono::milliseconds(10),
                                      std::chrono::milliseconds(50), 10.0, 5);
-    auto result  = flow::this_thread::sync_wait(std::move(sndr));
+    auto result  = flow::this_thread::sync_wait(sndr);
     auto elapsed = std::chrono::steady_clock::now() - start;
 
     expect(result.has_value());
@@ -637,10 +663,10 @@ int main() {
     std::atomic<int> attempts{0};
     test_scheduler   sch;
 
-    auto sndr = failing_sender<int>{attempts, 1, 42}
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}
                 | retry_with_backoff(sch, std::chrono::milliseconds(5),
                                      std::chrono::milliseconds(100), 2.0, 3);
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -652,8 +678,9 @@ int main() {
 
   "retry composition - retry then transform"_test = [] {
     std::atomic<int> attempts{0};
-    auto sndr = failing_sender<int>{attempts, 2, 42} | retry() | then([](int x) { return x * 2; });
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 2, .success_value = 42}
+                | retry() | then([](int x) { return x * 2; });
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 84));
@@ -662,8 +689,9 @@ int main() {
 
   "retry composition - transform then retry"_test = [] {
     std::atomic<int> attempts{0};
-    auto sndr = failing_sender<int>{attempts, 2, 42} | then([](int x) { return x + 1; }) | retry();
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 2, .success_value = 42}
+                | then([](int x) { return x + 1; }) | retry();
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(std::get<0>(*result), 43));
@@ -671,8 +699,9 @@ int main() {
 
   "retry composition - multiple retry stages"_test = [] {
     std::atomic<int> attempts{0};
-    auto sndr   = failing_sender<int>{attempts, 1, 42} | retry_n(3) | then([](int x) { return x; });
-    auto result = flow::this_thread::sync_wait(std::move(sndr));
+    auto sndr = failing_sender<int>{.attempt_count = attempts, .fail_times = 1, .success_value = 42}
+                | retry_n(3) | then([](int x) { return x; });
+    auto result = flow::this_thread::sync_wait(sndr);
 
     expect(result.has_value());
     expect(eq(attempts.load(), 2));
@@ -685,8 +714,8 @@ int main() {
   "retry - handles exception during retry"_test = [] {
     // This tests that if retry() itself throws, it's handled
     std::atomic<int> attempts{0};
-    auto             sndr = always_failing_sender{attempts, "Fail"} | retry_n(2)
-                | upon_error([](std::exception_ptr ep) {
+    auto sndr = always_failing_sender{.attempt_count = attempts, .error_message = "Fail"}
+                | retry_n(2) | upon_error([](std::exception_ptr ep) {
                     try {
                       std::rethrow_exception(ep);
                     } catch (const std::runtime_error&) {
@@ -704,15 +733,16 @@ int main() {
     std::atomic<int> attempts{0};
     std::string      captured_error;
 
-    auto sndr = always_failing_sender{attempts, "Custom error message"} | retry_n(1)
-                | upon_error([&captured_error](std::exception_ptr ep) {
-                    try {
-                      std::rethrow_exception(ep);
-                    } catch (const std::exception& e) {
-                      captured_error = e.what();
-                    }
-                    return 0;
-                  });
+    auto sndr =
+        always_failing_sender{.attempt_count = attempts, .error_message = "Custom error message"}
+        | retry_n(1) | upon_error([&captured_error](std::exception_ptr ep) {
+            try {
+              std::rethrow_exception(ep);
+            } catch (const std::exception& e) {
+              captured_error = e.what();
+            }
+            return 0;
+          });
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());
@@ -721,7 +751,7 @@ int main() {
 
   "retry - different value types"_test = [] {
     struct complex_type {
-      int         x;
+      int         x{};
       std::string y;
       bool        operator==(const complex_type& other) const {
         return x == other.x && y == other.y;
@@ -729,7 +759,10 @@ int main() {
     };
 
     std::atomic<int> attempts{0};
-    auto sndr   = failing_sender<complex_type>{attempts, 1, complex_type{42, "hello"}} | retry();
+    auto             sndr = failing_sender<complex_type>{.attempt_count = attempts,
+                                                         .fail_times    = 1,
+                                                         .success_value = complex_type{.x = 42, .y = "hello"}}
+                | retry();
     auto result = flow::this_thread::sync_wait(std::move(sndr));
 
     expect(result.has_value());

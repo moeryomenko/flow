@@ -1,6 +1,5 @@
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
-#include <string>
 
 int main() {
   using namespace boost::ut;
@@ -36,7 +35,8 @@ int main() {
   "let_stopped_fallback"_test = [] {
     auto sender = just_stopped() | let_stopped([]() { return just(99); });
 
-    auto result = sync_wait(std::move(sender));
+    auto result = sync_wait(sender);
+
     expect(result.has_value());
     expect(std::get<0>(*result) == 99_i);
   };

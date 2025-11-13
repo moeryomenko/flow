@@ -1,5 +1,3 @@
-// Tests for bulk, bulk_chunked, and bulk_unchunked with execution policies
-
 #include <atomic>
 #include <boost/ut.hpp>
 #include <vector>

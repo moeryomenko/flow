@@ -1,10 +1,5 @@
-// integration_tests.cpp
-// Integration and scenario tests for flow::execution
-// See TESTING_PLAN.md section 14
-
 #include <atomic>
 #include <boost/ut.hpp>
-#include <chrono>
 #include <flow/execution.hpp>
 #include <string>
 #include <thread>
@@ -18,8 +13,9 @@ int main() {
     // Simulate a simple data processing pipeline
     auto pipeline = just(std::vector<int>{1, 2, 3, 4, 5}) | then([](std::vector<int> data) {
                       // Transform: multiply by 2
-                      for (auto& x : data)
+                      for (auto& x : data) {
                         x *= 2;
+                      }
                       return data;
                     })
                     | then([](std::vector<int> data) {
@@ -29,8 +25,9 @@ int main() {
                     | then([](std::vector<int> data) {
                         // Reduce: sum
                         int sum = 0;
-                        for (int x : data)
+                        for (int x : data) {
                           sum += x;
+                        }
                         return sum;
                       });
 
@@ -63,6 +60,7 @@ int main() {
     std::atomic<int> completed{0};
 
     std::vector<std::thread> threads;
+    threads.reserve(10);
     for (int i = 0; i < 10; ++i) {
       threads.emplace_back([&] {
         for (int j = 0; j < num_operations / 10; ++j) {
@@ -106,21 +104,23 @@ int main() {
         (*counter)++;
       }
       ~Resource() {
-        if (counter)
+        if (counter) {
           (*counter)--;
+        }
       }
       Resource(const Resource&) = delete;
-      Resource(Resource&& r) : counter(r.counter) {
+      Resource(Resource&& r) noexcept : counter(r.counter) {
         r.counter = nullptr;
       }
 
-      int value() const {
+      [[nodiscard]] static int value() {
         return 42;
       }
     };
 
     {
-      auto s = just(Resource{&resource_count}) | then([](Resource r) { return r.value(); });
+      auto s = just(Resource{&resource_count})
+               | then([]([[maybe_unused]] Resource r) { return Resource::value(); });
 
       expect(resource_count == 1_i);
       auto result = flow::this_thread::sync_wait(std::move(s));
@@ -161,9 +161,9 @@ int main() {
     auto result = waiter(std::move(combined));
 
     expect(result.has_value());
-    expect(std::get<0>(*result) == true);
+    expect(std::get<0>(*result));
     expect(std::get<1>(*result) == std::string("success"));
-    expect(std::get<2>(*result) == false);
+    expect(!std::get<2>(*result));
   };
 
   "when_all_with_vectors"_test = [] {
@@ -215,8 +215,8 @@ int main() {
       double      price;
     };
 
-    auto s1 = just(Person{"Alice", 30});
-    auto s2 = just(Product{"Book", 19.99});
+    auto s1 = just(Person{.name = "Alice", .age = 30});
+    auto s2 = just(Product{.name = "Book", .price = 19.99});
     auto s3 = just(100);  // int for quantity
 
     auto combined = when_all(std::move(s1), std::move(s2), std::move(s3));

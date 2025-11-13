@@ -28,7 +28,7 @@ int main() {
     inline_scheduler sch;
     auto             work = schedule(sch) | then([] { return 42; });
 
-    auto result = flow::this_thread::sync_wait(std::move(work));
+    auto result = flow::this_thread::sync_wait(work);
     expect(result.has_value());
     expect(std::get<0>(*result) == 42_i);
   };

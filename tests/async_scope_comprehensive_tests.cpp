@@ -339,7 +339,7 @@ const suite corner_case_tests = [] {
     threads.reserve(20);
     for (int i = 0; i < 20; ++i) {
       threads.emplace_back([&scope, &token_count] {
-        auto token = scope.get_token();
+        [[maybe_unused]] auto token = scope.get_token();
         token_count.fetch_add(1);
       });
     }
