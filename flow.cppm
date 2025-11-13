@@ -17,6 +17,7 @@ module;
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <random>
 #include <stop_token>
 #include <thread>
 #include <tuple>

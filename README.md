@@ -85,7 +85,8 @@ Traditional callback-based or future-based async programming can be complex and 
 - **🎯 Type-safe** - Compile-time checked sender/receiver connections with full type inference
 - **⚡ Zero-overhead** - Header-only library with excellent optimization potential
 - **🔧 Composable** - Rich set of algorithms for building complex async workflows
-- **🧵 Thread Pool** - Built-in thread pool and run loop schedulers
+- **🧵 Thread Pool** - Built-in thread pool, run loop, and work-stealing schedulers
+- **⚡ Work-Stealing Scheduler** - High-performance scheduler with per-processor queues and dynamic load balancing
 - **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
 - **🎯 Execution Policies** - P3481R5 support with `seq`, `par`, `par_unseq`, `unseq` for bulk operations
 - **🔀 Bulk Variants** - `bulk`, `bulk_chunked`, `bulk_unchunked` for different parallelism patterns
@@ -554,7 +555,8 @@ flow/
 │   ├── error_handling.cpp      # Error handling patterns
 │   ├── parallel_transform.cpp  # Parallel computation example
 │   ├── try_schedule_example.cpp # Non-blocking operations (P3669R2)
-│   └── when_any_example.cpp    # Racing operations example
+│   ├── when_any_example.cpp    # Racing operations example
+│   └── work_stealing_example.cpp # Work-stealing scheduler demonstration
 │
 └── tests/
     ├── CMakeLists.txt
@@ -583,7 +585,10 @@ flow/
     ├── when_any_tests.cpp              # when_any algorithm tests
     ├── retry_tests.cpp                 # retry algorithms tests
     ├── try_scheduler_tests.cpp         # P3669R2 non-blocking scheduler tests
-    └── bulk_policy_tests.cpp           # P3481R5 bulk algorithms with execution policies
+    ├── bulk_policy_tests.cpp           # P3481R5 bulk algorithms with execution policies
+    ├── work_stealing_scheduler_tests.cpp # Work-stealing scheduler tests
+    ├── work_stealing_scheduler_concurrency_tests.cpp # Work-stealing concurrency validation
+    └── async_scope_work_stealing_integration_tests.cpp # Async scope + work-stealing integration
 ```
 
 ---
@@ -641,6 +646,10 @@ auto loop_sch = loop.get_scheduler();
 // Thread pool (parallel execution across N threads)
 thread_pool pool{8};
 auto pool_sch = pool.get_scheduler();
+
+// Work-stealing scheduler (dynamic load balancing)
+work_stealing_scheduler ws_sched{8};
+auto ws_sch = ws_sched.get_scheduler();
 ```
 
 ### Operation States
@@ -1027,6 +1036,197 @@ auto robust_pipeline = schedule(pool.get_scheduler())
 
 ---
 
+## ⚖️ Work-Stealing Scheduler for Dynamic Load Balancing
+
+Flow provides a high-performance work-stealing scheduler inspired by Go's runtime. This scheduler optimizes CPU utilization through dynamic load balancing, making it ideal for workloads with varying task durations.
+
+### Why Work-Stealing?
+
+Traditional thread pools use a single shared queue, which can become a bottleneck under high contention. The work-stealing scheduler addresses this by:
+
+- **Per-processor local queues**: Each worker thread maintains its own task queue, minimizing lock contention
+- **Dynamic load balancing**: Idle workers steal work from busy workers, ensuring optimal CPU utilization
+- **Minimal contention**: Short time slices and minimal locking reduce synchronization overhead
+- **Better cache locality**: Workers primarily execute their own tasks, improving cache hit rates
+
+### Architecture
+
+The work-stealing scheduler implements a G-P-M model (borrowed from Go):
+
+- **G (Goroutine/Task)**: Lightweight task abstraction representing a unit of work
+- **P (Processor)**: Logical processor with a local run queue (up to 256 tasks)
+- **M (Machine)**: OS thread that executes tasks from a processor
+
+```
+┌─────────────────────────────────────────────────┐
+│              Global Run Queue                   │
+│         (overflow & load balancing)             │
+└─────────────────────────────────────────────────┘
+         ↑                    ↑
+         │                    │
+    ┌────┴────┐          ┌────┴────┐
+    │   P0    │          │   P1    │
+    │  Local  │  steal   │  Local  │
+    │  Queue  │ ←────────│  Queue  │
+    └────┬────┘          └────┬────┘
+         │                    │
+    ┌────▼────┐          ┌────▼────┐
+    │   M0    │          │   M1    │
+    │ Worker  │          │ Worker  │
+    │ Thread  │          │ Thread  │
+    └─────────┘          └─────────┘
+```
+
+### Basic Usage
+
+```cpp
+#include <flow/execution.hpp>
+using namespace flow::execution;
+
+int main() {
+    // Create scheduler with hardware concurrency threads
+    work_stealing_scheduler sched;
+    auto scheduler = sched.get_scheduler();
+
+    // Or specify thread count
+    work_stealing_scheduler sched_8(8);  // 8 worker threads
+
+    // Use like any other scheduler
+    auto work = schedule(scheduler) | then([] {
+        return compute_result();
+    });
+
+    auto result = flow::this_thread::sync_wait(work);
+    return 0;
+}
+```
+
+### Performance Monitoring with Statistics
+
+The work-stealing scheduler provides detailed statistics for monitoring and debugging:
+
+```cpp
+work_stealing_scheduler sched(4);
+auto scheduler = sched.get_scheduler();
+
+// Execute some work...
+for (int i = 0; i < 100; ++i) {
+    auto work = schedule(scheduler) | then([i] {
+        return compute(i);
+    });
+    flow::this_thread::sync_wait(work);
+}
+
+// Inspect per-processor statistics
+for (size_t i = 0; i < 4; ++i) {
+    auto stats = sched.get_stats(i);
+    std::cout << "Processor " << i << ":\n"
+              << "  Tasks executed: " << stats.tasks_executed << "\n"
+              << "  Local queue pops: " << stats.local_queue_pops << "\n"
+              << "  Global queue pops: " << stats.global_queue_pops << "\n"
+              << "  Steal attempts: " << stats.steals_attempted << "\n"
+              << "  Successful steals: " << stats.steals_succeeded << "\n";
+}
+```
+
+### When to Use Work-Stealing Scheduler
+
+| Scenario | Work-Stealing Scheduler | Thread Pool |
+|----------|------------------------|-------------|
+| Heterogeneous task durations | ✅ Excellent | ⚠️ May underutilize CPUs |
+| High task submission rate | ✅ Low contention | ⚠️ Single queue bottleneck |
+| CPU-bound workloads | ✅ Optimal distribution | ✅ Also good |
+| I/O-bound workloads | ✅ Good | ✅ Good |
+| Fine-grained parallelism | ✅ Excellent | ⚠️ More overhead |
+| Simple uniform tasks | ✅ Good | ✅ Simpler |
+
+### Work-Stealing Algorithm
+
+1. **Local queue first** (FIFO): Worker attempts to pop from its own local queue
+2. **Global queue check** (every 61 tasks): Periodically checks global queue for fairness
+3. **Work stealing** (on idle): Randomly selects a victim processor and steals from the back of their queue
+4. **Wait with timeout**: If no work found, waits briefly before rechecking
+
+This strategy balances:
+- **Cache locality**: Workers prefer their own tasks
+- **Fairness**: Global queue prevents starvation
+- **Load balancing**: Stealing redistributes work from busy to idle workers
+
+### Integration with Async Scopes
+
+The work-stealing scheduler integrates seamlessly with async scopes for structured concurrency:
+
+```cpp
+work_stealing_scheduler sched(4);
+auto scheduler = sched.get_scheduler();
+
+auto result = flow::this_thread::sync_wait(
+    just() | let_async_scope([&](auto scope_token) {
+        // Spawn multiple tasks that benefit from work stealing
+        for (int i = 0; i < 100; ++i) {
+            spawn(
+                schedule(scheduler) | then([i] {
+                    return process_item(i);
+                }),
+                scope_token
+            );
+        }
+        // Work is automatically distributed and balanced
+    })
+);
+```
+
+### try_schedule Support
+
+Like other Flow schedulers, the work-stealing scheduler supports non-blocking operations:
+
+```cpp
+work_stealing_scheduler sched(4);
+auto scheduler = sched.get_scheduler();
+
+static_assert(try_scheduler<decltype(scheduler)>);
+
+auto work = try_schedule(scheduler)
+    | then([] { return 42; })
+    | upon_error([](would_block_t) {
+        return -1;  // Handle queue full
+    });
+```
+
+### Performance Characteristics
+
+**Strengths:**
+- ✅ **Low contention**: O(1) local queue operations without locks (try-lock only)
+- ✅ **Dynamic balancing**: Automatic load distribution across workers
+- ✅ **Cache efficiency**: Workers mostly execute their own tasks
+- ✅ **Scalability**: Performs well with increasing thread counts
+
+**Trade-offs:**
+- ⚠️ **Memory overhead**: Each processor maintains a separate queue
+- ⚠️ **Stealing cost**: Cross-processor stealing has some overhead
+- ⚠️ **Complexity**: More complex than simple thread pool
+
+### Complete Example
+
+See [`examples/work_stealing_example.cpp`](examples/work_stealing_example.cpp) for comprehensive demonstrations including:
+- Basic usage patterns
+- Performance comparison with standard thread pool
+- Statistics monitoring and analysis
+- Load distribution visualization
+- Heterogeneous task distribution
+
+### Key Features
+
+- **🔄 Dynamic Load Balancing**: Automatic work redistribution
+- **📊 Performance Monitoring**: Detailed per-processor statistics
+- **🔓 Low Contention**: Per-processor local queues
+- **🚀 High Throughput**: Minimal lock acquisition in hot paths
+- **🔗 Fully Compatible**: Works with all Flow algorithms and adaptors
+- **🛑 Cancellation Support**: Respects stop tokens and async scopes
+- **📈 Scalable**: Efficient with high worker thread counts
+
+---
+
 ## 🛑 Cancellation & Stop Tokens
 
 Flow provides comprehensive support for cooperative cancellation through stop tokens, enabling graceful termination of asynchronous operations.
@@ -1269,7 +1469,7 @@ auto cancellable_work = schedule(scheduler)
 
 ## 🧪 Testing
 
-Flow includes a comprehensive test suite with 22+ test categories:
+Flow includes a comprehensive test suite with 29+ test categories:
 
 ```bash
 # Build with tests
@@ -1283,6 +1483,7 @@ ctest
 ./tests/scheduler_tests
 ./tests/async_scope_basic_tests
 ./tests/let_async_scope_tests
+./tests/work_stealing_scheduler_tests
 
 # Run tests with verbose output
 ctest -V
@@ -1309,6 +1510,9 @@ ctest -V
 - **when_any Tests**: Racing operations and active cancellation
 - **Retry Tests**: Retry mechanisms and error recovery
 - **Bulk Policy Tests**: P3481R5 execution policies and bulk variants
+- **Work-Stealing Scheduler Tests**: Work-stealing behavior and statistics
+- **Work-Stealing Concurrency Tests**: Thread safety and memory ordering validation
+- **Async Scope Work-Stealing Integration**: Integration between async scopes and work-stealing scheduler
 
 ---
 
@@ -1395,6 +1599,7 @@ See [Contributing](#-contributing) section below!
 
 - ✅ Core sender/receiver model
 - ✅ Standard schedulers (inline, run_loop, thread_pool)
+- ✅ Work-stealing scheduler with dynamic load balancing
 - ✅ Essential algorithms (then, upon_error, bulk, when_all, when_any)
 - ✅ Bulk algorithms with execution policies (P3481R5) - `bulk`, `bulk_chunked`, `bulk_unchunked`
 - ✅ Execution policy support - `seq`, `par`, `par_unseq`, `unseq`
@@ -1407,7 +1612,7 @@ See [Contributing](#-contributing) section below!
 - ✅ Spawn operations (`spawn`, `spawn_future`)
 - ✅ Retry mechanisms - `retry`, `retry_n`, `retry_if`, `retry_with_backoff`
 - ✅ C++23 Modules - Experimental support via CMake FILE_SET CXX_MODULES
-- ✅ Comprehensive test suite (26+ tests, including bulk policy tests)
+- ✅ Comprehensive test suite (29+ tests, including work-stealing scheduler tests)
 - ✅ Example programs
 
 ### Future Explorations

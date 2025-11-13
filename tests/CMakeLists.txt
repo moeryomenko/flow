@@ -36,6 +36,9 @@ set(
   retry_tests.cpp
   try_scheduler_tests.cpp
   bulk_policy_tests.cpp
+  work_stealing_scheduler_tests.cpp
+  work_stealing_scheduler_concurrency_tests.cpp
+  async_scope_work_stealing_integration_tests.cpp
 )
 
 # Create test executables and register them

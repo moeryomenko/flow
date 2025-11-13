@@ -16,3 +16,6 @@ target_link_libraries(when_any_example PRIVATE flow::flow)
 
 add_executable(try_schedule_example try_schedule_example.cpp)
 target_link_libraries(try_schedule_example PRIVATE flow::flow)
+
+add_executable(work_stealing_example work_stealing_example.cpp)
+target_link_libraries(work_stealing_example PRIVATE flow::flow)

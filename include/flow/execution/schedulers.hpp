@@ -14,6 +14,7 @@
 #include "scheduler.hpp"
 #include "try_scheduler.hpp"
 #include "type_list.hpp"
+#include "work_stealing_scheduler.hpp"
 
 namespace flow::execution {
 
