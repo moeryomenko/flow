@@ -10,12 +10,14 @@
 //   - completion_signatures.hpp: Completion signatures
 //   - sender.hpp: Sender concepts and connection
 //   - scheduler.hpp: Scheduler concepts and factories
+//   - try_scheduler.hpp: Non-blocking scheduler support (P3669)
 
-#include "execution/adaptors.hpp"     // Sender adaptors
-#include "execution/algorithms.hpp"   // Sender algorithms
-#include "execution/async_scope.hpp"  // Async scope support (P3149)
-#include "execution/factories.hpp"    // Sender factories (just, just_error, etc.)
-#include "execution/schedulers.hpp"   // Standard scheduler implementations
-#include "execution/stop_token.hpp"   // Stop token support
-#include "execution/sync_wait.hpp"    // Synchronization utilities
-#include "execution/type_list.hpp"    // Type list utilities
+#include "execution/adaptors.hpp"       // Sender adaptors
+#include "execution/algorithms.hpp"     // Sender algorithms
+#include "execution/async_scope.hpp"    // Async scope support (P3149)
+#include "execution/factories.hpp"      // Sender factories (just, just_error, etc.)
+#include "execution/schedulers.hpp"     // Standard scheduler implementations
+#include "execution/stop_token.hpp"     // Stop token support
+#include "execution/sync_wait.hpp"      // Synchronization utilities
+#include "execution/try_scheduler.hpp"  // Non-blocking scheduler support (P3669)
+#include "execution/type_list.hpp"      // Type list utilities

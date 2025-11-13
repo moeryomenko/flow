@@ -18,7 +18,7 @@
 
 ## ⚠️ Research Project Notice
 
-> This is an **experimental research project** exploring P2300 with member customization points (P2855), non-blocking support (P3669), async scopes (P3149), and structured concurrency (P3296). It is **not ready for production use** and is intended for study, experimentation, and academic research purposes only.
+> This is an **experimental research project** exploring P2300 with member customization points (P2855), non-blocking support (P3669R2), async scopes (P3149), and structured concurrency (P3296). It is **not ready for production use** and is intended for study, experimentation, and academic research purposes only.
 
 ---
 
@@ -89,12 +89,12 @@ Traditional callback-based or future-based async programming can be complex and 
 - **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
 - **🔄 Retry Mechanisms** - `retry`, `retry_n`, `retry_if`, `retry_with_backoff` for resilient error handling
 - **✨ Clean API** - Member function customization points (P2855) for clarity
-- **🚫 Non-blocking Support** - P3669 concurrent schedulers for lock-free integration
+- **🚫 Non-blocking Support** - P3669R2 `try_scheduler` for signal-safe, lock-free operations
 - **📦 Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
 - **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
 - **🛑 Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
 - **📦 C++23 Modules** - Experimental module support via CMake's FILE_SET CXX_MODULES
-- **🧪 Comprehensive Tests** - Extensive test suite with 23+ test categories
+- **🧪 Comprehensive Tests** - Extensive test suite with 24+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
 
 ---
@@ -528,6 +528,7 @@ flow/
 │           ├── sender.hpp          # Sender concepts
 │           ├── receiver.hpp        # Receiver concepts
 │           ├── scheduler.hpp       # Scheduler concepts
+│           ├── try_scheduler.hpp   # Non-blocking scheduler support (P3669R2)
 │           ├── operation_state.hpp # Operation state concepts
 │           ├── queries.hpp         # Query customization points
 │           ├── env.hpp             # Execution environments
@@ -538,6 +539,7 @@ flow/
 │           ├── retry.hpp           # Retry mechanisms for error recovery
 │           ├── async_scope.hpp     # Async scope support (P3149, P3296)
 │           ├── schedulers.hpp      # Standard scheduler implementations
+│           ├── lock_free_queue.hpp # Lock-free queue for non-blocking operations
 │           ├── stop_token.hpp      # Stop token and cancellation support
 │           ├── sync_wait.hpp       # Synchronous execution utilities
 │           ├── type_list.hpp       # Type manipulation utilities
@@ -548,6 +550,7 @@ flow/
 │   ├── hello_world.cpp         # Basic usage example
 │   ├── error_handling.cpp      # Error handling patterns
 │   ├── parallel_transform.cpp  # Parallel computation example
+│   ├── try_schedule_example.cpp # Non-blocking operations (P3669R2)
 │   └── when_any_example.cpp    # Racing operations example
 │
 └── tests/
@@ -575,7 +578,8 @@ flow/
     ├── async_scope_comprehensive_tests.cpp  # Comprehensive scope tests
     ├── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
     ├── when_any_tests.cpp              # when_any algorithm tests
-    └── retry_tests.cpp                 # retry algorithms tests
+    ├── retry_tests.cpp                 # retry algorithms tests
+    └── try_scheduler_tests.cpp         # P3669R2 non-blocking scheduler tests
 ```
 
 ---
@@ -749,6 +753,139 @@ auto result = schedule(pool.get_scheduler())
     | upon_error([](auto ep) { /* handle error */ })
     | bulk(100, [](size_t i) { /* parallel work */ });
 ```
+
+---
+
+## � Non-Blocking Operations with P3669R2
+
+Flow implements P3669R2 non-blocking scheduler support, enabling signal-safe and truly lock-free asynchronous operations.
+
+### Why Non-Blocking Operations?
+
+Some execution environments require operations that **never block**:
+- **Signal handlers** for asynchronous signals (POSIX signals)
+- **Interrupt handlers** in embedded systems
+- **Real-time contexts** with strict timing requirements
+- **Lock-free algorithms** that must avoid blocking
+
+Regular `schedule()` may block when enqueueing work (e.g., acquiring a mutex on the work queue). P3669R2 introduces `try_schedule()` which either succeeds immediately or signals `would_block_t` error without blocking.
+
+### try_scheduler Concept
+
+Schedulers that support non-blocking operations model the `try_scheduler` concept:
+
+```cpp
+using namespace flow::execution;
+
+// Check if scheduler supports try_schedule
+static_assert(try_scheduler<decltype(pool.get_scheduler())>);
+static_assert(try_scheduler<decltype(loop.get_scheduler())>);
+```
+
+Both `run_loop` and `thread_pool` in Flow are `try_scheduler`s.
+
+### try_schedule() Usage
+
+Use `try_schedule()` when blocking is unacceptable:
+
+```cpp
+thread_pool pool{4};
+auto sch = pool.get_scheduler();
+
+// Non-blocking schedule
+auto work = sch.try_schedule()
+    | then([] {
+        std::cout << "Executing without blocking!\n";
+        return 42;
+    })
+    | upon_error([](would_block_t) {
+        std::cout << "Would have blocked - queue was full\n";
+        return -1;  // Fallback value
+    });
+
+auto result = flow::this_thread::sync_wait(std::move(work));
+```
+
+### Signal-Safe Example
+
+Perfect for signal handlers where blocking operations are forbidden:
+
+```cpp
+#include <csignal>
+#include <flow/execution.hpp>
+
+thread_pool pool{4};
+
+void signal_handler(int signum) {
+    // SAFE: try_schedule() is signal-safe
+    auto work = pool.get_scheduler().try_schedule()
+        | then([signum] {
+            // Handle signal asynchronously
+            log_signal(signum);
+        });
+
+    // Fire and forget (or use async scope)
+    spawn(std::move(work), scope_token);
+}
+
+int main() {
+    std::signal(SIGUSR1, signal_handler);
+    // ...
+}
+```
+
+### Key Guarantees
+
+P3669R2 `try_schedule()` guarantees:
+
+- ✅ **Never blocks** - Returns immediately
+- ✅ **Signal-safe** - Can be called from signal handlers
+- ✅ **Lock-free** - No mutex acquisition in critical path
+- ✅ **No allocation** - Uses fixed-size lock-free ring buffer
+- ✅ **Error signaling** - `set_error(would_block_t{})` if queue is full
+
+### Implementation Details
+
+Flow's implementation uses:
+- **Lock-free bounded queue** (`lock_free_bounded_queue`) with fixed capacity (1024 items)
+- **MPMC ring buffer** with atomic version numbers for ABA problem prevention
+- **CAS operations** for wait-free push/pop
+- **Exception handling** for `std::function` move construction failures
+
+### When to Use try_schedule
+
+| Scenario | Use try_schedule | Use schedule |
+|----------|------------------|--------------|
+| Signal handlers | ✅ Yes | ❌ No |
+| Interrupt handlers | ✅ Yes | ❌ No |
+| Real-time contexts | ✅ Yes | ❌ No |
+| Lock-free algorithms | ✅ Yes | ❌ No |
+| Normal async work | Either | ✅ Preferred |
+
+### would_block_t Error Type
+
+When `try_schedule()` would block, it signals an error of type `would_block_t`:
+
+```cpp
+auto work = sch.try_schedule()
+    | then([] { return 42; })
+    | upon_error([](would_block_t) {
+        // Queue was full, handle gracefully
+        return fallback_value;
+    })
+    | upon_error([](std::exception_ptr ep) {
+        // Handle other errors
+        return error_value;
+    });
+```
+
+### Complete Example
+
+See [`examples/try_schedule_example.cpp`](examples/try_schedule_example.cpp) for a comprehensive demonstration of:
+- Basic `try_schedule()` usage
+- Composing with `then()`
+- Multiple concurrent non-blocking operations
+- Checking `try_scheduler` support at compile time
 
 ---
 
@@ -1194,7 +1331,7 @@ Flow is designed for **zero-overhead abstraction**:
 
 Flow specifically explores:
 - **P2855**: Member customization points (different from tag_invoke)
-- **P3669**: Non-blocking scheduler support
+- **P3669R2**: Non-blocking scheduler support with `try_scheduler` and lock-free queues
 - **P3149**: Async scope support for lifetime management
 - **P3296**: Structured concurrency with `let_async_scope`
 - **Modern C++23**: Latest language features
@@ -1243,12 +1380,14 @@ See [Contributing](#-contributing) section below!
 - ✅ Essential algorithms (then, upon_error, bulk, when_all, when_any)
 - ✅ Stop token support (inplace_stop_token, inplace_stop_source)
 - ✅ Active cancellation in when_any
+- ✅ Non-blocking operations (P3669R2) - `try_scheduler`, `try_schedule`
+- ✅ Lock-free bounded queue for signal-safe operations
 - ✅ Async scopes (P3149) - `simple_counting_scope`, `counting_scope`
 - ✅ Structured concurrency (P3296) - `let_async_scope`
 - ✅ Spawn operations (`spawn`, `spawn_future`)
 - ✅ Retry mechanisms - `retry`, `retry_n`, `retry_if`, `retry_with_backoff`
 - ✅ C++23 Modules - Experimental support via CMake FILE_SET CXX_MODULES
-- ✅ Comprehensive test suite (23+ categories)
+- ✅ Comprehensive test suite (24+ categories)
 - ✅ Example programs
 
 ### Future Explorations
@@ -1331,7 +1470,7 @@ You may use this project under the terms of either license.
 - [P2855: Member customization points](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p2855r1.html) - Member function CPOs
 - [P3149: Async scopes](https://open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3149r11.html) - Lifetime management for async operations
 - [P3296: `let_async_scope`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3296r4.html) - Structured concurrency patterns
-- [P3669: Non-blocking support](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3669r0.html) - Concurrent schedulers
+- [P3669R2: Non-blocking support](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3669r2.html) - Signal-safe `try_scheduler` and `try_schedule`
 
 ### Related Projects
 

@@ -13,3 +13,6 @@ target_link_libraries(parallel_transform PRIVATE flow::flow)
 
 add_executable(when_any_example when_any_example.cpp)
 target_link_libraries(when_any_example PRIVATE flow::flow)
+
+add_executable(try_schedule_example try_schedule_example.cpp)
+target_link_libraries(try_schedule_example PRIVATE flow::flow)
