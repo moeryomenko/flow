@@ -1,7 +1,3 @@
-// adaptor_tests.cpp
-// Sender adaptor tests (then, let_value, upon_error, bulk, when_all, etc.)
-// See TESTING_PLAN.md section 8.2
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <stdexcept>
@@ -20,9 +16,9 @@ int main() {
   };
 
   "then_void_return"_test = [] {
-    bool executed = false;
-    auto s        = just(42) | then([&](int) { executed = true; });
-    auto result   = flow::this_thread::sync_wait(std::move(s));
+    bool                  executed = false;
+    auto                  s        = just(42) | then([&](int) { executed = true; });
+    [[maybe_unused]] auto result   = flow::this_thread::sync_wait(std::move(s));
 
     expect(executed);
   };
@@ -36,7 +32,8 @@ int main() {
                 return -1;
               });
 
-    auto result = flow::this_thread::sync_wait(std::move(s2));
+    [[maybe_unused]] auto result = flow::this_thread::sync_wait(std::move(s2));
+
     expect(error_caught);
   };
 
@@ -52,7 +49,8 @@ int main() {
   "upon_stopped"_test = [] {
     auto s = just_stopped() | upon_stopped([] { return 42; });
 
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    auto result = flow::this_thread::sync_wait(s);
+
     expect(result.has_value());
     expect(std::get<0>(*result) == 42_i);
   };
@@ -64,9 +62,9 @@ int main() {
 
   "bulk"_test = [] {
     std::vector<int> results(10);
-    auto s = just() | bulk(10, [&](std::size_t i) { results[i] = static_cast<int>(i * 2); });
+    auto s = just() | bulk(seq, 10, [&](std::size_t i) { results[i] = static_cast<int>(i * 2); });
 
-    flow::this_thread::sync_wait(std::move(s));
+    flow::this_thread::sync_wait(s);
 
     for (std::size_t i = 0; i < 10; ++i) {
       expect(results[i] == static_cast<int>(i * 2));
@@ -94,7 +92,7 @@ int main() {
                return 42;
              });
 
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    auto result = flow::this_thread::sync_wait(s);
 
     expect(result.has_value());
     expect(std::get<0>(*result) == 42_i);

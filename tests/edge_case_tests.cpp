@@ -1,7 +1,3 @@
-// edge_case_tests.cpp
-// Edge case and boundary condition tests
-// See TESTING_PLAN.md section 11
-
 #include <boost/ut.hpp>
 #include <flow/execution.hpp>
 #include <stdexcept>
@@ -12,7 +8,7 @@ int main() {
 
   "empty_sender_chain"_test = [] {
     auto s      = just();
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    auto result = flow::this_thread::sync_wait(s);
 
     expect(result.has_value());
   };
@@ -36,15 +32,17 @@ int main() {
                  return 0;
                });
 
-    auto result = flow::this_thread::sync_wait(std::move(s));
+    [[maybe_unused]] auto result = flow::this_thread::sync_wait(std::move(s));
+
     expect(error_handler_called);
   };
 
   "zero_bulk_operations"_test = [] {
     int  call_count = 0;
-    auto s          = just() | bulk(0, [&](std::size_t) { call_count++; });
+    auto s          = just() | bulk(seq, 0, [&](std::size_t) { call_count++; });
 
-    flow::this_thread::sync_wait(std::move(s));
+    flow::this_thread::sync_wait(s);
+
     expect(call_count == 0_i);
   };
 
@@ -52,9 +50,10 @@ int main() {
     const std::size_t N = 10000;
     std::atomic<int>  counter{0};
 
-    auto s = just() | bulk(N, [&](std::size_t) { counter.fetch_add(1); });
+    auto s = just() | bulk(par, N, [&](std::size_t) { counter.fetch_add(1); });
 
-    flow::this_thread::sync_wait(std::move(s));
+    flow::this_thread::sync_wait(s);
+
     expect(counter.load() == static_cast<int>(N));
   };
 

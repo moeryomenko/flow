@@ -1,7 +1,3 @@
-// performance_tests.cpp
-// Performance and memory benchmarks for flow::execution
-// See TESTING_PLAN.md section 9
-
 #include <boost/ut.hpp>
 #include <chrono>
 #include <flow/execution.hpp>
@@ -24,7 +20,7 @@ int main() {
 
     for (int i = 0; i < iterations; ++i) {
       auto work = schedule(sch) | then([] { return 42; });
-      flow::this_thread::sync_wait(std::move(work));
+      flow::this_thread::sync_wait(work);
     }
 
     auto end      = std::chrono::high_resolution_clock::now();
@@ -58,9 +54,9 @@ int main() {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto s = just() | bulk(N, [&](std::size_t i) { data[i] = static_cast<int>(i * 2); });
+    auto s = just() | bulk(par, N, [&](std::size_t i) { data[i] = static_cast<int>(i * 2); });
 
-    flow::this_thread::sync_wait(std::move(s));
+    flow::this_thread::sync_wait(s);
 
     auto end      = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);

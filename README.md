@@ -49,7 +49,7 @@
 
 ## 🎯 About
 
-**Flow** is a header-only C++23 library that implements the sender/receiver model for structured asynchronous programming. It provides a type-safe, composable, and zero-overhead abstraction for managing asynchronous operations, based on the upcoming C++ standard proposal P2300, with additional support for async scopes (P3149) and structured concurrency (P3296).
+**Flow** is a header-only C++23 library that implements the sender/receiver model for structured asynchronous programming. It provides a type-safe, composable, and zero-overhead abstraction for managing asynchronous operations, based on the upcoming C++ standard proposal P2300, with additional support for async scopes (P3149), structured concurrency (P3296), and bulk algorithm improvements (P3481R5).
 
 ### What is Flow?
 
@@ -87,6 +87,8 @@ Traditional callback-based or future-based async programming can be complex and 
 - **🔧 Composable** - Rich set of algorithms for building complex async workflows
 - **🧵 Thread Pool** - Built-in thread pool and run loop schedulers
 - **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
+- **🎯 Execution Policies** - P3481R5 support with `seq`, `par`, `par_unseq`, `unseq` for bulk operations
+- **🔀 Bulk Variants** - `bulk`, `bulk_chunked`, `bulk_unchunked` for different parallelism patterns
 - **🔄 Retry Mechanisms** - `retry`, `retry_n`, `retry_if`, `retry_with_backoff` for resilient error handling
 - **✨ Clean API** - Member function customization points (P2855) for clarity
 - **🚫 Non-blocking Support** - P3669R2 `try_scheduler` for signal-safe, lock-free operations
@@ -411,9 +413,9 @@ int main() {
     std::vector<int> input(1000);
     std::iota(input.begin(), input.end(), 1);  // 1, 2, 3, ..., 1000
 
-    // Parallel computation
+    // Parallel computation with execution policy
     auto sender = schedule(pool.get_scheduler())
-        | bulk(input.size(), [&](size_t i) {
+        | bulk(par, input.size(), [&](size_t i) {
             input[i] = input[i] * input[i];  // square each element
         });
 
@@ -533,6 +535,7 @@ flow/
 │           ├── queries.hpp         # Query customization points
 │           ├── env.hpp             # Execution environments
 │           ├── completion_signatures.hpp  # Completion signatures
+│           ├── execution_policy.hpp       # Execution policies (P3481R5)
 │           ├── factories.hpp       # Sender factories (just, just_error, etc.)
 │           ├── adaptors.hpp        # Sender adaptors (then, upon_error, etc.)
 │           ├── algorithms.hpp      # Advanced algorithms (bulk, when_all, when_any, etc.)
@@ -579,7 +582,8 @@ flow/
     ├── let_async_scope_tests.cpp       # let_async_scope tests (P3296)
     ├── when_any_tests.cpp              # when_any algorithm tests
     ├── retry_tests.cpp                 # retry algorithms tests
-    └── try_scheduler_tests.cpp         # P3669R2 non-blocking scheduler tests
+    ├── try_scheduler_tests.cpp         # P3669R2 non-blocking scheduler tests
+    └── bulk_policy_tests.cpp           # P3481R5 bulk algorithms with execution policies
 ```
 
 ---
@@ -721,7 +725,9 @@ Advanced sender operations:
 
 | Algorithm | Description |
 |-----------|-------------|
-| `bulk(count, fn)` | Execute function for range [0, count) in parallel |
+| `bulk(policy, count, fn)` | Execute function for range [0, count) with execution policy |
+| `bulk_chunked(policy, count, fn)` | Execute function with begin/end range (basis operation for chunking) |
+| `bulk_unchunked(policy, count, fn)` | Execute function per iteration (one agent per iteration) |
 | `when_all(senders...)` | Wait for all senders to complete, aggregating results |
 | `when_any(senders...)` | Race senders, first to complete wins (with active cancellation) |
 | `retry()` | Retry indefinitely on error until success |
@@ -729,6 +735,17 @@ Advanced sender operations:
 | `retry_if(predicate)` | Retry only if predicate returns true for the error |
 | `retry_with_backoff(...)` | Retry with exponential backoff delay |
 | `transfer(scheduler)` | Move execution to different scheduler |
+
+#### Execution Policies
+
+Bulk algorithms support standard execution policies to control parallelism and vectorization:
+
+| Policy | Description |
+|--------|-------------|
+| `seq` | Sequential execution (no parallelism) |
+| `par` | Parallel execution allowed |
+| `par_unseq` | Parallel and vectorized execution allowed |
+| `unseq` | Vectorized execution allowed (no parallelism) |
 
 ### Async Scope Operations
 
@@ -1291,6 +1308,7 @@ ctest -V
 - **let_async_scope Tests**: P3296 structured concurrency
 - **when_any Tests**: Racing operations and active cancellation
 - **Retry Tests**: Retry mechanisms and error recovery
+- **Bulk Policy Tests**: P3481R5 execution policies and bulk variants
 
 ---
 
@@ -1378,6 +1396,8 @@ See [Contributing](#-contributing) section below!
 - ✅ Core sender/receiver model
 - ✅ Standard schedulers (inline, run_loop, thread_pool)
 - ✅ Essential algorithms (then, upon_error, bulk, when_all, when_any)
+- ✅ Bulk algorithms with execution policies (P3481R5) - `bulk`, `bulk_chunked`, `bulk_unchunked`
+- ✅ Execution policy support - `seq`, `par`, `par_unseq`, `unseq`
 - ✅ Stop token support (inplace_stop_token, inplace_stop_source)
 - ✅ Active cancellation in when_any
 - ✅ Non-blocking operations (P3669R2) - `try_scheduler`, `try_schedule`
@@ -1387,7 +1407,7 @@ See [Contributing](#-contributing) section below!
 - ✅ Spawn operations (`spawn`, `spawn_future`)
 - ✅ Retry mechanisms - `retry`, `retry_n`, `retry_if`, `retry_with_backoff`
 - ✅ C++23 Modules - Experimental support via CMake FILE_SET CXX_MODULES
-- ✅ Comprehensive test suite (24+ categories)
+- ✅ Comprehensive test suite (26+ tests, including bulk policy tests)
 - ✅ Example programs
 
 ### Future Explorations
@@ -1470,6 +1490,7 @@ You may use this project under the terms of either license.
 - [P2855: Member customization points](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p2855r1.html) - Member function CPOs
 - [P3149: Async scopes](https://open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3149r11.html) - Lifetime management for async operations
 - [P3296: `let_async_scope`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3296r4.html) - Structured concurrency patterns
+- [P3481R5: `bulk` improvements](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3481r5.html) - Execution policies and bulk algorithm variants
 - [P3669R2: Non-blocking support](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3669r2.html) - Signal-safe `try_scheduler` and `try_schedule`
 
 ### Related Projects

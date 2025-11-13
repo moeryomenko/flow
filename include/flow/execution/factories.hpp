@@ -69,6 +69,9 @@ struct _just_sender {
     _just_operation(std::tuple<Ts...>&& vals, R&& r)
         : values_(std::move(vals)), receiver_(std::move(r)) {}
 
+    _just_operation(const std::tuple<Ts...>& vals, R&& r)
+        : values_(vals), receiver_(std::move(r)) {}
+
     void start() & noexcept {
       std::apply(
           [this](auto&&... args) -> auto {
@@ -159,6 +162,12 @@ struct _just_stopped_sender {
   template <class R>
     requires receiver<R>
   auto connect(R&& r) && {
+    return _just_stopped_operation<R>{std::forward<R>(r)};
+  }
+
+  template <class R>
+    requires receiver<R>
+  auto connect(R&& r) & {
     return _just_stopped_operation<R>{std::forward<R>(r)};
   }
 

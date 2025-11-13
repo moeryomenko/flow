@@ -12,21 +12,21 @@ auto parallel_transform_reduce(Sch sch, std::span<const int> input, std::span<in
   const size_t chunk_size = input.size() / 4;  // 4 chunks
 
   return just(std::vector<int>(4)) | then([=](std::vector<int>&& partials) -> auto {
-           auto bulk_sender =
-               schedule(sch)
-               | bulk(size_t(4), [=, partials_ptr = partials.data()](size_t i) mutable -> auto {
-                   auto start = i * chunk_size;
-                   auto end   = std::min(input.size(), (i + 1) * chunk_size);
+           auto bulk_sender = schedule(sch)
+                              | bulk(seq, size_t(4),
+                                     [=, partials_ptr = partials.data()](size_t i) mutable -> auto {
+                                       auto start = i * chunk_size;
+                                       auto end   = std::min(input.size(), (i + 1) * chunk_size);
 
-                   // Transform and reduce this chunk
-                   int partial = init;
-                   for (size_t j = start; j < end; ++j) {
-                     output[j] = transform_op(input[j]);
-                     partial   = reduce_op(partial, output[j]);
-                   }
-                   // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-                   partials_ptr[i] = partial;
-                 });
+                                       // Transform and reduce this chunk
+                                       int partial = init;
+                                       for (size_t j = start; j < end; ++j) {
+                                         output[j] = transform_op(input[j]);
+                                         partial   = reduce_op(partial, output[j]);
+                                       }
+                                       // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+                                       partials_ptr[i] = partial;
+                                     });
 
            // Execute bulk work and then reduce
            flow::this_thread::sync_wait(bulk_sender);
