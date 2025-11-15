@@ -96,6 +96,7 @@ Traditional callback-based or future-based async programming can be complex and 
 - **📦 Async Scopes** - P3149 async scope support with `counting_scope` and `simple_counting_scope`
 - **🎯 Structured Concurrency** - P3296 `let_async_scope` for managing concurrent operations
 - **🛑 Stop Token Support** - Comprehensive cancellation infrastructure with `inplace_stop_token`
+- **🌐 Networking** - Asynchronous network I/O based on P2762R2, P3185R0 (TAPS), and P3482R0
 - **📦 C++23 Modules** - Experimental module support via CMake's FILE_SET CXX_MODULES
 - **🧪 Comprehensive Tests** - Extensive test suite with 24+ test categories
 - **📝 Well Documented** - Clear examples and API documentation
@@ -539,6 +540,62 @@ int main() {
     return 0;
 }
 ```
+
+### Asynchronous Networking
+
+```cpp
+#include <flow/execution.hpp>
+#include <flow/net.hpp>
+#include <iostream>
+
+using namespace flow;
+using namespace flow::execution;
+using namespace flow::net;
+
+int main() {
+    // Create I/O context for network operations
+    io_context ctx;
+    tcp_socket socket(ctx);
+
+    // Configure transport properties (TAPS-inspired)
+    auto props = transport_properties::reliable_stream();
+
+    // Open socket
+    socket.open(tcp());
+
+    // Async network operations integrate with execution
+    std::vector<char> buffer(1024);
+    mutable_buffer_sequence buffers;
+    buffers.push_back(flow::net::buffer(buffer.data(), buffer.size()));
+
+    auto work = schedule(ctx.get_scheduler())
+        | then([&socket, &buffers] {
+            // Async receive with sender/receiver
+            return async_receive(socket, buffers);
+          })
+        | then([](std::size_t bytes_received) {
+            std::cout << "Received " << bytes_received << " bytes\n";
+            return bytes_received;
+          })
+        | upon_error([](std::error_code ec) {
+            std::cout << "Network error: " << ec.message() << '\n';
+            return 0;
+          });
+
+    auto result = this_thread::sync_wait(std::move(work));
+
+    return 0;
+}
+```
+
+**See [NETWORKING.md](NETWORKING.md) for comprehensive networking documentation including:**
+- I/O context and schedulers
+- Socket types (TCP, UDP)
+- Async operations (connect, send, receive)
+- Buffer management
+- TAPS property system
+- Security properties
+- Error handling patterns
 
 ---
 

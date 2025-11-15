@@ -28,9 +28,9 @@ int main() {
     {
       thread_pool pool{1};
       auto        sender = just(100) | transfer(pool.get_scheduler()) | then([](int x) {
-        std::cout << "  In then callback, x=" << x << "\n";
-        return x + 1;
-      });
+                      std::cout << "  In then callback, x=" << x << "\n";
+                      return x + 1;
+                    });
 
       std::cout << "  Calling sync_wait...\n";
       auto result = this_thread::sync_wait(std::move(sender));
