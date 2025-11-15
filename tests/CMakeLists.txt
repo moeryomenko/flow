@@ -35,6 +35,7 @@ set(
   when_any_tests.cpp
   retry_tests.cpp
   try_scheduler_tests.cpp
+  transfer_tests.cpp
   bulk_policy_tests.cpp
   work_stealing_scheduler_tests.cpp
   work_stealing_scheduler_concurrency_tests.cpp

@@ -87,7 +87,7 @@ Traditional callback-based or future-based async programming can be complex and 
 - **🔧 Composable** - Rich set of algorithms for building complex async workflows
 - **🧵 Thread Pool** - Built-in thread pool, run loop, and work-stealing schedulers
 - **⚡ Work-Stealing Scheduler** - High-performance scheduler with per-processor queues and dynamic load balancing
-- **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `then`, `upon_error`, `upon_stopped`, and more
+- **📊 Algorithms** - `bulk`, `when_all`, `when_any`, `transfer`, `then`, `upon_error`, `upon_stopped`, and more
 - **🎯 Execution Policies** - P3481R5 support with `seq`, `par`, `par_unseq`, `unseq` for bulk operations
 - **🔀 Bulk Variants** - `bulk`, `bulk_chunked`, `bulk_unchunked` for different parallelism patterns
 - **🔄 Retry Mechanisms** - `retry`, `retry_n`, `retry_if`, `retry_with_backoff` for resilient error handling
@@ -500,6 +500,40 @@ int main() {
     if (result) {
         auto [winner] = *result;
         std::cout << "Winner: " << winner << "\n";
+    }
+
+    return 0;
+}
+```
+
+### Transferring Execution Between Schedulers
+
+```cpp
+#include <flow/execution.hpp>
+#include <iostream>
+
+using namespace flow::execution;
+
+int main() {
+    thread_pool pool1{2};
+    thread_pool pool2{2};
+
+    // Start work on pool1, transfer to pool2
+    auto work = schedule(pool1.get_scheduler())
+        | then([] {
+            std::cout << "Computing on pool1\n";
+            return 42;
+        })
+        | transfer(pool2.get_scheduler())  // Move execution to pool2
+        | then([](int x) {
+            std::cout << "Processing on pool2\n";
+            return x * 2;
+        });
+
+    auto result = flow::this_thread::sync_wait(work);
+
+    if (result) {
+        std::cout << "Final result: " << std::get<0>(*result) << '\n';
     }
 
     return 0;
